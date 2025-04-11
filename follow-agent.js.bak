@@ -1,0 +1,714 @@
+/**
+ * X Growth Agent - Follow Agent
+ * 
+ * This script handles automatic following and unfollowing of users based on settings
+ */
+
+// Ensure this specific script only loads once to avoid duplicating functions
+if (typeof window.xGrowthAgentFollowAgentLoaded !== 'undefined') {
+  console.log('Follow agent already loaded, aborting duplicate initialization');
+} else {
+  console.log('X Growth Agent follow agent script loading...');
+
+  // These functions need to be exposed to the window object for direct access
+  // Define them at the top level to ensure they're available early
+  window.startAgent = null; // Will be defined later
+  window.stopAgent = null;  // Will be defined later
+  window.getAgentStatus = null; // Will be defined later
+
+  // Set global flag to indicate the follow agent script is loaded
+  // This MUST be set before any async operations to ensure it's immediately available
+  window.xGrowthAgentFollowAgentLoaded = true;
+  console.log('X Growth Agent follow agent script loaded on', window.location.href);
+
+  // Keep track of agent state
+  let agentState = {
+    isRunning: false,
+    followCount: 0,
+    unfollowCount: 0,
+    lastRun: null,
+    currentUser: null,
+    errors: [],
+    dailyStats: {
+      date: null,
+      followCount: 0,
+      unfollowCount: 0
+    }
+  };
+
+  // Define agent functions in a scope that won't conflict with content.js
+  (function initializeAgent() {
+    /**
+     * Creates a status overlay on the page to show agent progress
+     */
+    function createAgentOverlay(message) {
+      // Remove existing overlay if any
+      removeAgentOverlay();
+      
+      // Create new overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'x-growth-agent-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background-color: rgba(29, 161, 242, 0.9);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      `;
+      overlay.textContent = message;
+      document.body.appendChild(overlay);
+      
+      return overlay;
+    }
+
+    /**
+     * Updates the agent overlay with a new message
+     */
+    function updateAgentOverlay(message) {
+      const overlay = document.getElementById('x-growth-agent-overlay');
+      if (overlay) {
+        overlay.textContent = message;
+      } else {
+        createAgentOverlay(message);
+      }
+    }
+
+    /**
+     * Removes the agent overlay
+     */
+    function removeAgentOverlay() {
+      const overlay = document.getElementById('x-growth-agent-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    /**
+     * Find and click the follow button for a specific user
+     */
+    async function followUser(username) {
+      return new Promise((resolve, reject) => {
+        try {
+          console.log(`Navigating to profile: ${username}`);
+          // Navigate to the user's profile
+          window.location.href = `https://x.com/${username}`;
+          
+          // Wait for page to load and follow button to appear
+          let attempts = 0;
+          const maxAttempts = 25; // Increased attempts
+          
+          // First wait for the page to load properly
+          const pageLoadCheck = setInterval(() => {
+            const mainContent = document.querySelector('[data-testid="primaryColumn"]');
+            if (mainContent) {
+              clearInterval(pageLoadCheck);
+              startButtonCheck();
+            } else if (attempts >= 10) {
+              clearInterval(pageLoadCheck);
+              console.log('Primary column not found, but proceeding anyway');
+              startButtonCheck();
+            }
+            attempts++;
+          }, 500);
+          
+          function startButtonCheck() {
+            attempts = 0;
+            // Run the debug function first to analyze buttons
+            setTimeout(() => {
+              debugButtons();
+            }, 1000);
+            
+            const checkForFollowButton = setInterval(() => {
+              attempts++;
+              console.log(`Attempt ${attempts}: Searching for follow button...`);
+              
+              // More comprehensive set of selectors to find the follow button
+              // Twitter/X has different button patterns based on layout and device
+              const followButtonSelectors = [
+                // Data testid selectors (most reliable)
+                '[data-testid="followButton"]',
+                // Specific follow button used in profiles
+                '[data-testid="userActions"] [role="button"]',
+                // Attribute selectors
+                'div[role="button"][aria-label="Follow"]',
+                'div[role="button"][aria-label^="Follow @"]',
+                // Text-based selectors
+                'div[role="button"]:not([aria-label*="Following"]):not([aria-label*="Requested"])'
+              ];
+              
+              let followButton = null;
+              
+              // Try each selector
+              for (const selector of followButtonSelectors) {
+                const elements = document.querySelectorAll(selector);
+                for (const el of elements) {
+                  // Verify it's a follow button
+                  const text = el.textContent ? el.textContent.toLowerCase() : '';
+                  const ariaLabel = el.getAttribute('aria-label') ? el.getAttribute('aria-label').toLowerCase() : '';
+                  
+                  // Check if the button is actually visible
+                  if (isElementVisible(el)) {
+                    if (
+                      // Data-testid match is most reliable
+                      (el.getAttribute('data-testid') === 'followButton') || 
+                      // Text content suggests it's a follow button
+                      (text.includes('follow') && !text.includes('following') && !text.includes('unfollow')) ||
+                      // Aria label suggests it's a follow button
+                      (ariaLabel.includes('follow') && !ariaLabel.includes('following') && !ariaLabel.includes('unfollow'))
+                    ) {
+                      followButton = el;
+                      break;
+                    }
+                  }
+                }
+                if (followButton) break;
+              }
+              
+              // Special case for X's action button - it sometimes has no text
+              if (!followButton) {
+                const actionButtons = document.querySelectorAll('[data-testid="userActions"] [role="button"]');
+                for (const btn of actionButtons) {
+                  // If it's in the user actions area and doesn't say "Following" or "Message", it's likely a follow button
+                  if (isElementVisible(btn) && btn.textContent) {
+                    const text = btn.textContent.toLowerCase();
+                    if (!text.includes('following') && !text.includes('message')) {
+                      followButton = btn;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              // Debug info
+              if (followButton) {
+                console.log('Follow button found:', followButton);
+                console.log('Text content:', followButton.textContent);
+                console.log('Aria-label:', followButton.getAttribute('aria-label'));
+                console.log('Data-testid:', followButton.getAttribute('data-testid'));
+              }
+              
+              if (followButton) {
+                clearInterval(checkForFollowButton);
+                
+                // A small delay before clicking to ensure page is ready
+                setTimeout(() => {
+                  try {
+                    console.log('Clicking follow button');
+                    followButton.click();
+                    
+                    // Listen for any "Error" toast that might appear
+                    setTimeout(() => {
+                      const errorToast = document.querySelector('[data-testid="toast"]');
+                      if (errorToast && errorToast.textContent.includes('Error')) {
+                        console.error('Error toast detected after clicking follow button:', errorToast.textContent);
+                        reject(new Error('Twitter returned an error when trying to follow'));
+                      } else {
+                        // Success!
+                        resolve(true);
+                      }
+                    }, 1000);
+                  } catch (clickError) {
+                    console.error('Error clicking follow button:', clickError);
+                    reject(new Error(`Error clicking follow button: ${clickError.message}`));
+                  }
+                }, 1000); // Increased delay before clicking
+              } else if (attempts >= maxAttempts) {
+                clearInterval(checkForFollowButton);
+                console.log('Max attempts reached, could not find follow button');
+                
+                // Final debug to help diagnose the issue
+                debugButtons();
+                
+                // Check for common failure scenarios
+                
+                // 1. Check if we're already following
+                const followingIndicators = [
+                  document.querySelector('[data-testid="unfollowButton"]'),
+                  document.querySelector('div[role="button"][aria-label="Following"]'),
+                  document.querySelector('div[role="button"][aria-label^="Following @"]'),
+                  // Text-based check
+                  Array.from(document.querySelectorAll('div[role="button"]'))
+                    .find(el => el.textContent && el.textContent.trim() === 'Following')
+                ];
+                
+                if (followingIndicators.some(indicator => indicator)) {
+                  console.log('Already following this user');
+                  resolve(true); // Consider it a success if we're already following
+                  return;
+                }
+                
+                // 2. Check if account doesn't exist
+                if (document.body.textContent.includes("This account doesn't exist") || 
+                    document.body.textContent.includes("Account suspended")) {
+                  reject(new Error(`@${username}'s account is unavailable (suspended or doesn't exist)`));
+                  return;
+                }
+                
+                // 3. Check for rate limiting
+                if (document.body.textContent.includes("rate limit") || 
+                    document.body.textContent.includes("Try again later")) {
+                  reject(new Error("Rate limited by Twitter. Try again later."));
+                  return;
+                }
+                
+                // General failure if no specific issue found
+                reject(new Error(`Could not find follow button for @${username} after ${maxAttempts} attempts`));
+              }
+            }, 600); // Increased interval between checks
+          }
+          
+          // Set a timeout in case we can't find the button
+          setTimeout(() => {
+            clearInterval(pageLoadCheck);
+            console.log('Timeout reached, could not find follow button');
+            reject(new Error(`Timeout: Could not find follow button for @${username}`));
+          }, 20000); // Increased timeout
+        } catch (error) {
+          console.error('Error in followUser:', error);
+          reject(error);
+        }
+      });
+    }
+
+    /**
+     * Check if we are already following a user
+     * This function helps determine if we should attempt to follow or unfollow
+     */
+    async function checkFollowStatus(username) {
+      return new Promise((resolve, reject) => {
+        try {
+          console.log(`Checking follow status for: ${username}`);
+          // Navigate to the user's profile
+          window.location.href = `https://x.com/${username}`;
+          
+          // Wait for page to load and buttons to appear
+          let attempts = 0;
+          const maxAttempts = 25; // Increased attempts
+          
+          // First wait for the page to load properly
+          const pageLoadCheck = setInterval(() => {
+            const mainContent = document.querySelector('[data-testid="primaryColumn"]');
+            if (mainContent) {
+              clearInterval(pageLoadCheck);
+              startStatusCheck();
+            } else if (attempts >= 10) {
+              clearInterval(pageLoadCheck);
+              console.log('Primary column not found, but proceeding anyway');
+              startStatusCheck();
+            }
+            attempts++;
+          }, 500);
+          
+          function startStatusCheck() {
+            attempts = 0;
+            
+            // Run debug to help identify the state
+            setTimeout(() => {
+              debugButtons();
+            }, 1000);
+            
+            const checkForButtons = setInterval(() => {
+              attempts++;
+              
+              console.log(`Attempt ${attempts}: Checking follow status...`);
+              
+              // Check for "Following" button or status
+              const followingSelectors = [
+                // Data testid is most reliable
+                '[data-testid="unfollowButton"]',
+                // Aria labels
+                'div[role="button"][aria-label="Following"]',
+                'div[role="button"][aria-label^="Following @"]',
+                // These are seen in different variations of the UI
+                'div[role="button"][aria-label*="Following"]',
+                // Twitter sometimes has an unfollow button in user actions
+                '[data-testid="userActions"] div[role="button"][aria-label*="Unfollow"]'
+              ];
+              
+              // Check for "Follow" button - indicates we're not following
+              const followSelectors = [
+                '[data-testid="followButton"]',
+                'div[role="button"][aria-label="Follow"]',
+                'div[role="button"][aria-label^="Follow @"]',
+                '[data-testid="userActions"] div[role="button"][aria-label*="Follow"]:not([aria-label*="Following"])'
+              ];
+              
+              // Check for following status
+              let followingElement = null;
+              for (const selector of followingSelectors) {
+                const elements = document.querySelectorAll(selector);
+                for (const el of elements) {
+                  if (isElementVisible(el)) {
+                    followingElement = el;
+                    break;
+                  }
+                }
+                if (followingElement) break;
+              }
+              
+              // Also check for text content as a fallback
+              if (!followingElement) {
+                const buttons = document.querySelectorAll('div[role="button"]');
+                for (const button of buttons) {
+                  if (isElementVisible(button) && button.textContent && 
+                     (button.textContent.trim() === 'Following' || 
+                      button.textContent.trim() === 'Unfollow')) {
+                    followingElement = button;
+                    break;
+                  }
+                }
+              }
+              
+              // Check for follow button
+              let followElement = null;
+              for (const selector of followSelectors) {
+                const elements = document.querySelectorAll(selector);
+                for (const el of elements) {
+                  if (isElementVisible(el)) {
+                    followElement = el;
+                    break;
+                  }
+                }
+                if (followElement) break;
+              }
+              
+              // Log what we found
+              if (followingElement) {
+                console.log('Found following indicator:', followingElement);
+              }
+              
+              if (followElement) {
+                console.log('Found follow button:', followElement);
+              }
+              
+              // Determine status based on what we found
+              if (followingElement) {
+                clearInterval(checkForButtons);
+                console.log(`User ${username} is being followed by us`);
+                resolve({ following: true });
+              } else if (followElement) {
+                clearInterval(checkForButtons);
+                console.log(`User ${username} is NOT being followed by us`);
+                resolve({ following: false });
+              } else if (attempts >= maxAttempts) {
+                // Final debug to see what's there
+                debugButtons();
+                
+                // Check for common issues
+                
+                // 1. Page may not have loaded, check for profile elements
+                const profileElements = document.querySelectorAll('[data-testid="primaryColumn"]');
+                if (profileElements.length === 0) {
+                  clearInterval(checkForButtons);
+                  reject(new Error(`Profile page for @${username} may not have loaded correctly`));
+                  return;
+                }
+                
+                // 2. Account doesn't exist
+                if (document.body.textContent.includes("This account doesn't exist") || 
+                    document.body.textContent.includes("Account suspended")) {
+                  clearInterval(checkForButtons);
+                  reject(new Error(`@${username}'s account is unavailable (suspended or doesn't exist)`));
+                  return;
+                }
+                
+                // 3. Rate limited
+                if (document.body.textContent.includes("rate limit") || 
+                    document.body.textContent.includes("Try again later")) {
+                  clearInterval(checkForButtons);
+                  reject(new Error("Rate limited by Twitter. Try again later."));
+                  return;
+                }
+                
+                // 4. If we see any buttons at all, assume not following as a fallback
+                const anyButtons = document.querySelectorAll('div[role="button"]');
+                if (anyButtons.length > 0) {
+                  clearInterval(checkForButtons);
+                  console.log('Found buttons but couldn\'t determine status, assuming not following');
+                  resolve({ following: false });
+                  return;
+                }
+                
+                clearInterval(checkForButtons);
+                console.log('Max attempts reached, could not determine follow status');
+                reject(new Error(`Could not determine follow status for @${username}`));
+              }
+            }, 600); // Increased interval
+            
+            // Set a timeout in case we can't determine status
+            setTimeout(() => {
+              clearInterval(checkForButtons);
+              console.log('Timeout reached, could not determine follow status');
+              reject(new Error(`Timeout: Could not determine follow status for @${username}`));
+            }, 20000); // Increased timeout
+          }
+          
+          // Set overall timeout
+          setTimeout(() => {
+            clearInterval(pageLoadCheck);
+            console.log('Overall timeout reached, could not load profile page');
+            reject(new Error(`Overall timeout: Could not load profile page for @${username}`));
+          }, 30000); // 30 second overall timeout
+          
+        } catch (error) {
+          console.error('Error checking follow status:', error);
+          reject(error);
+        }
+      });
+    }
+
+    /**
+     * Process the follow queue based on settings
+     */
+    async function processFollowQueue(settings, extractedUsers, followedUsers) {
+      try {
+        // Get users to follow (users not already followed)
+        const usersToFollow = extractedUsers.filter(user => 
+          // Check if user is not already in the followed users list
+          !followedUsers.some(followed => followed.username === user.username)
+        );
+        
+        console.log(`Found ${usersToFollow.length} users to follow from queue of ${extractedUsers.length}`);
+        updateAgentOverlay(`Found ${usersToFollow.length} users to follow`);
+        
+        if (usersToFollow.length === 0) {
+          agentState.isRunning = false;
+          await chrome.storage.local.set({ agentState });
+          updateAgentOverlay('No users to follow in queue');
+          
+          // Auto-hide overlay after 3 seconds
+          setTimeout(removeAgentOverlay, 3000);
+          return;
+        }
+        
+        // Create a processed list to track which users we've processed
+        let processed = [];
+        let errorCount = 0; // Track consecutive errors
+        
+        // Process users one by one
+        for (let i = 0; i < usersToFollow.length; i++) {
+          // Stop if agent is no longer running
+          if (!agentState.isRunning) {
+            console.log('Agent stopped, ending queue processing');
+            updateAgentOverlay('Agent stopped by user');
+            setTimeout(removeAgentOverlay, 3000);
+            break;
+          }
+          
+          // Check if we've reached the daily limit
+          if (agentState.dailyStats.followCount >= settings.dailyFollowLimit) {
+            console.log(`Daily follow limit reached (${settings.dailyFollowLimit})`);
+            updateAgentOverlay(`Daily follow limit reached (${settings.dailyFollowLimit})`);
+            agentState.isRunning = false;
+            await chrome.storage.local.set({ agentState });
+            
+            // Auto-hide overlay after 3 seconds
+            setTimeout(removeAgentOverlay, 3000);
+            break;
+          }
+          
+          // Check if we've had too many consecutive errors
+          if (errorCount >= 5) {
+            console.log('Too many consecutive errors, pausing agent');
+            updateAgentOverlay('Too many errors encountered, agent paused');
+            agentState.isRunning = false;
+            agentState.errors.push({
+              error: 'Too many consecutive errors, agent paused',
+              time: new Date().toISOString()
+            });
+            await chrome.storage.local.set({ agentState });
+            setTimeout(removeAgentOverlay, 5000);
+            break;
+          }
+          
+          const user = usersToFollow[i];
+          
+          // Update current user in agent state
+          agentState.currentUser = user.username;
+          await chrome.storage.local.set({ agentState });
+          
+          // Show status
+          updateAgentOverlay(`Processing user: @${user.username} (${i+1}/${usersToFollow.length})`);
+          console.log(`Processing user: @${user.username}`);
+          
+          try {
+            // Process a single user with comprehensive error handling
+            await processSingleUser(user, followedUsers);
+            
+            // Add to processed list
+            processed.push(user.username);
+            
+            // Reset error count since we processed successfully
+            errorCount = 0;
+            
+            // Remove processed users from extracted users queue periodically
+            if (processed.length > 0 && (processed.length % 5 === 0 || i === usersToFollow.length - 1)) {
+              try {
+                await removeProcessedUsersFromQueue(processed);
+              } catch (storageError) {
+                console.error('Error updating storage:', storageError);
+                // Non-fatal error, continue processing
+              }
+            }
+            
+            // Add random delay before next follow if not at the end
+            if (i < usersToFollow.length - 1) {
+              const delay = calculateRandomDelay(settings);
+              updateAgentOverlay(`Successfully processed @${user.username}. Waiting ${Math.round(delay/1000)}s before next user...`);
+              console.log(`Waiting ${delay}ms before next user`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            
+          } catch (error) {
+            console.error(`Error processing user @${user.username}:`, error);
+            updateAgentOverlay(`Error with @${user.username}: ${error.message}`);
+            
+            // Increment error count
+            errorCount++;
+            
+            agentState.errors.push({
+              username: user.username,
+              error: error.message,
+              time: new Date().toISOString()
+            });
+            await chrome.storage.local.set({ agentState });
+            
+            // Still add to processed list if there was an error
+            // because we don't want to retry users that cause errors
+            processed.push(user.username);
+            
+            // Add a shorter delay before continuing after an error
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+        
+        // Agent has completed its run
+        agentState.isRunning = false;
+        agentState.currentUser = null;
+        await chrome.storage.local.set({ agentState });
+        
+        const completionMessage = processed.length > 0 
+          ? `Completed: Followed ${processed.length} users`
+          : 'Completed: No users were followed';
+          
+        updateAgentOverlay(completionMessage);
+        
+        // Auto-hide overlay after 5 seconds
+        setTimeout(removeAgentOverlay, 5000);
+        
+      } catch (error) {
+        console.error('Error processing follow queue:', error);
+        updateAgentOverlay(`Critical error: ${error.message}`);
+        
+        agentState.isRunning = false;
+        agentState.errors.push({
+          error: error.message,
+          time: new Date().toISOString()
+        });
+        await chrome.storage.local.set({ agentState });
+        
+        // Auto-hide overlay after 5 seconds
+        setTimeout(removeAgentOverlay, 5000);
+      }
+    }
+    
+    /**
+     * Process a single user - follow them if not already following
+     */
+    async function processSingleUser(user, followedUsers) {
+      return new Promise(async (resolve, reject) => {
+        try {
+          // Check if we're already following this user
+          const followStatus = await checkFollowStatus(user.username);
+          
+          if (followStatus.following) {
+            console.log(`Already following @${user.username}, updating records`);
+            updateAgentOverlay(`Already following @${user.username}, skipping`);
+            
+            // Add user to followed users list since we're already following them
+            followedUsers.push({
+              username: user.username,
+              displayName: user.displayName,
+              profileUrl: user.profileUrl || `https://x.com/${user.username}`,
+              followedAt: new Date().toISOString(),
+              isFollowing: false,
+              unfollowedAt: null
+            });
+            
+            // Save followed users
+            await chrome.storage.local.set({ followedUsers });
+            
+            resolve(true);
+          } else {
+            // Actually follow the user
+            updateAgentOverlay(`Following user: @${user.username}`);
+            const success = await followUser(user.username);
+            
+            if (success) {
+              // Add user to followed users list
+              followedUsers.push({
+                username: user.username,
+                displayName: user.displayName,
+                profileUrl: user.profileUrl || `https://x.com/${user.username}`,
+                followedAt: new Date().toISOString(),
+                isFollowing: false, // We don't know if they follow back yet
+                unfollowedAt: null
+              });
+              
+              // Save followed users
+              await chrome.storage.local.set({ followedUsers });
+              
+              // Update counters
+              agentState.followCount++;
+              agentState.dailyStats.followCount++;
+              await chrome.storage.local.set({ agentState });
+              
+              // Show success message
+              updateAgentOverlay(`Successfully followed @${user.username}`);
+              resolve(true);
+            } else {
+              // If followUser resolves with false, it means there was an issue but not an exception
+              console.warn(`Could not follow @${user.username}, but no exception was thrown`);
+              reject(new Error(`Could not follow @${user.username} (unknown reason)`));
+            }
+          }
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }
+    
+    /**
+     * Remove processed users from the queue
+     */
+    async function removeProcessedUsersFromQueue(processed) {
+      if (!processed || processed.length === 0) return;
+      
+      // Get fresh copy of extracted users
+      const data = await chrome.storage.local.get('extractedUsers');
+      let currentExtractedUsers = data.extractedUsers || [];
+      
+      // Filter out processed users
+      const updatedExtractedUsers = currentExtractedUsers.filter(
+        user => !processed.includes(user.username)
+      );
+      
+      // Save updated queue
+      await chrome.storage.local.set({ extractedUsers: updatedExtractedUsers });
+      console.log(`Removed ${currentExtractedUsers.length - updatedExtractedUsers.length} processed users from queue`);
+    }
+    
+    /**
+     * Calculate random delay with variance
+     */
+    function calculateRandomDelay(settings) {
+          
+          if (followStatus.following) {
+            console.log(`

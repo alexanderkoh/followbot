@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X Growth Agent Settings</title>
+  <style>
+    :root {
+      --primary: #1DA1F2;
+      --primary-hover: #1a91da;
+      --secondary: #657786;
+      --light-bg: #f5f8fa;
+      --border: #e1e8ed;
+      --text: #14171a;
+      --success: #17bf63;
+      --error: #e0245e;
+      --warning: #ffad1f;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      width: 360px;
+      margin: 0;
+      padding: 0;
+      color: var(--text);
+    }
+    
+    .container {
+      padding: 16px;
+    }
+    
+    h1 {
+      font-size: 18px;
+      margin: 0 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .back-button {
+      background: none;
+      border: none;
+      color: var(--secondary);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 14px;
+    }
+
+    .back-button:hover {
+      background-color: var(--light-bg);
+      color: var(--primary);
+    }
+
+    h2 {
+      font-size: 16px;
+      margin: 16px 0 8px 0;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .input-description {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--secondary);
+    }
+
+    input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    input[type="number"]:focus, input[type="text"]:focus {
+      border-color: var(--primary);
+      outline: none;
+    }
+
+    .input-range {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .input-range input[type="range"] {
+      flex: 1;
+    }
+
+    .input-range span {
+      font-size: 14px;
+      font-weight: 500;
+      min-width: 40px;
+      text-align: center;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 24px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: background-color 0.2s;
+    }
+    
+    .btn:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .btn-group .btn {
+      flex: 1;
+    }
+    
+    .btn.secondary {
+      background-color: white;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+    
+    .btn.secondary:hover {
+      background-color: var(--light-bg);
+    }
+
+    .status {
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .status.success {
+      background-color: rgba(23, 191, 99, 0.1);
+      color: var(--success);
+    }
+    
+    .status.error {
+      background-color: rgba(224, 36, 94, 0.1);
+      color: var(--error);
+    }
+    
+    .status.info {
+      background-color: rgba(29, 161, 242, 0.1);
+      color: var(--primary);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--secondary);
+      transition: .4s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+
+    input:focus + .slider {
+      box-shadow: 0 0 1px var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .toggle-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .toggle-container .toggle-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <button id="back-button" class="back-button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        Back
+      </button>
+      <span>Settings</span>
+    </h1>
+    
+    <div class="section">
+      <h2>Follow Settings</h2>
+      
+      <div class="form-group">
+        <label for="daily-follow-limit">Daily Follow Limit</label>
+        <input type="number" id="daily-follow-limit" min="1" max="500" value="50">
+        <div class="input-description">Maximum number of accounts to follow per day (recommended: 40-50)</div>
+      </div>
+      
+      <div class="form-group">
+        <label for="hourly-follow-limit">Hourly Follow Limit (Optional)</label>
+        <input type="number" id="hourly-follow-limit" min="0" max="100" value="0">
+        <div class="input-description">Limit follows per hour (0 = disabled). Helps avoid hourly limits.</div>
+      </div>
+      
+      <div class="form-group">
+        <label for="max-actions-session">Max Actions Per Session (Optional)</label>
+        <input type="number" id="max-actions-session" min="0" max="1000" value="0">
+        <div class="input-description">Limit total follows+unfollows per run (0 = disabled).</div>
+      </div>
+      
+      <div class="form-group">
+        <label for="follow-interval">Time Between Follows (seconds)</label>
+        <input type="number" id="follow-interval" min="4" max="3600" value="60">
+        <div class="input-description">Time to wait between follow actions</div>
+      </div>
+      
+      <div class="form-group">
+        <label for="unfollow-days">Days to Wait Before Unfollowing</label>
+        <input type="number" id="unfollow-days" min="1" max="90" value="3">
+        <small>Automatically unfollow users after this many days.</small>
+      </div>
+      
+      <div class="form-group">
+        <label for="unfollow-seconds">Unfollow After (seconds - for testing):</label>
+        <input type="number" id="unfollow-seconds" min="5" placeholder="e.g., 15">
+        <small>Overrides 'days' if set. Minimum 5 seconds.</small>
+      </div>
+      
+      <div class="form-group">
+        <label for="time-variance">Time Variance (%)</label>
+        <div class="input-range">
+          <input type="range" id="time-variance" min="0" max="50" value="20">
+          <span id="variance-value">20%</span>
+        </div>
+        <div class="input-description">Randomness added to time intervals (helps avoid detection)</div>
+      </div>
+      
+      <div class="form-group">
+        <label>Min/Max "Thinking Time" (ms)</label>
+        <div style="display: flex; gap: 10px;">
+           <input type="number" id="min-thinking-time" min="0" max="2000" value="100" style="flex: 1;">
+           <input type="number" id="max-thinking-time" min="0" max="3000" value="500" style="flex: 1;">
+        </div>
+        <div class="input-description">Short random delay before clicks/navigation (e.g., 100-500ms)</div>
+      </div>
+      
+      <div class="toggle-container">
+        <span class="toggle-label">Enable Auto-Follow Mode</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="enable-auto-follow">
+          <span class="slider"></span>
+        </label>
+      </div>
+      
+      <div class="toggle-container">
+        <span class="toggle-label">Enable Auto-Unfollow</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="enable-auto-unfollow">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    
+    <div id="status-message" class="status hidden"></div>
+    
+    <div class="btn-group">
+      <button id="reset-settings" class="btn secondary">Reset to Default</button>
+      <button id="save-settings" class="btn">Save Settings</button>
+    </div>
+  </div>
+  
+  <script src="settings.js"></script>
+</body>
+</html> 
