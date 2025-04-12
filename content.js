@@ -200,238 +200,187 @@ if (window.xGrowthAgentContentLoaded) {
   // Listen for messages from the extension
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('Message received in content.js:', message);
-    
-    // Quick ping to verify content script is active
-    if (message.action === 'ping') {
-      sendResponse({ success: true });
-      return true;
-    }
-    
-    // Check if follow agent is loaded
-    if (message.action === 'checkAgentLoaded') {
-      console.log('Checking if agent is loaded...');
-      sendResponse({
-        success: true,
-        agentLoaded: typeof window.followAgentFunctionsAvailable !== 'undefined'
-      });
-      return true;
-    }
-    
-    // Handle debug UI display via popup button
-    if (message.action === 'showDebugUI') {
-      console.log('Showing debug UI...');
-      
-      try {
-        // First check if follow agent is initialized
-        if (typeof window.followAgentFunctionsAvailable !== 'undefined') {
-          console.log('Follow agent is fully initialized');
-          
-          // Create the agent overlay if needed
-          if (typeof window.createAgentOverlay === 'function') {
-            window.createAgentOverlay('Debug mode activated - New button click testing available!');
-          }
-          
-          // Initialize the debug logger UI
-          if (typeof window.initDebugLogger === 'function') {
-            window.initDebugLogger();
-            console.log('Debug logger initialized');
-          }
-          
-          // Make debug log visible
-          if (typeof window.toggleDebugVisibility === 'function') {
-            window.toggleDebugVisibility(true);
-            console.log('Debug log visibility enabled');
-          }
-          
-          // Log instructions for using follow button test
-          console.log('%cFind & Click Follow Buttons:', 'color: #ff4500; font-weight: bold; font-size: 14px');
-          console.log('1. Navigate to a profile page (twitter.com/username)');
-          console.log('2. Look for the "Test Follow Button" button in the debug panel');
-          console.log('3. Click on a "Click Button #X" option to test clicking that button');
-          
-          sendResponse({ success: true });
-          return true;
+
+    // Helper function to ensure follow agent is ready before executing actions
+    const ensureAgentReady = async () => {
+        if (window.followAgentInitialized || (typeof window.xGrowthAgentFollowAgentLoaded !== 'undefined')) {
+            // Attempt to ensure functions are available, might need a more robust check
+             if (typeof window.performFollow === 'function' && typeof window.performUnfollow === 'function' && typeof window.performGetFollowStatus === 'function') {
+                return true;
+             } else {
+                console.warn('Follow agent seems loaded, but required functions are missing. Re-checking status...');
+                // Attempt re-initialization or wait a bit longer
+                 await new Promise(resolve => setTimeout(resolve, 500));
+                 if (typeof window.performFollow === 'function' && typeof window.performUnfollow === 'function' && typeof window.performGetFollowStatus === 'function') {
+                     console.log('Required functions now available after delay.');
+                     return true;
+                 }
+             }
         }
-        
-        // Fallback to manual debug UI
-        console.log('Using fallback manual debug UI');
-        window.initDebugUI();
-        sendResponse({ success: true });
-        return true;
-      } catch (error) {
-        console.error('Error showing debug UI:', error);
-        sendResponse({ success: false, error: error.message });
-        return true;
-      }
-    }
-    
-    if (message.action === 'extractUsernames') {
-      // Extract any options passed from the popup
-      const options = message.options || {};
-      const maxScrolls = options.maxScrolls || 50; // Default to 50 if not specified
-      
-      extractUsernames(maxScrolls)
-        .then(result => sendResponse(result))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-      return true; // Indicates we'll respond asynchronously
-    }
-    
-    // Handle agent loaded check
-    if (message.action === 'checkAgentLoaded') {
-      console.log('Checking if agent is loaded...');
-      const agentLoaded = 
-        typeof window.xGrowthAgentFollowAgentLoaded !== 'undefined' || 
-        typeof window.followAgentInitialized !== 'undefined' ||
-        typeof window.followAgentFunctionsAvailable !== 'undefined';
-      
-      sendResponse({ 
-        success: true, 
-        agentLoaded: agentLoaded,
-        details: {
-          xGrowthAgentFollowAgentLoaded: typeof window.xGrowthAgentFollowAgentLoaded !== 'undefined',
-          followAgentInitialized: typeof window.followAgentInitialized !== 'undefined',
-          followAgentFunctionsAvailable: typeof window.followAgentFunctionsAvailable !== 'undefined'
+        // If not initialized or functions missing, try to initialize/check again
+        try {
+            console.log('Follow agent not ready, attempting check/initialization...');
+            await checkFollowAgentStatus();
+            // Final check after attempt
+            if (typeof window.performFollow === 'function' && typeof window.performUnfollow === 'function' && typeof window.performGetFollowStatus === 'function') {
+                 console.log('Follow agent now ready after re-check.');
+                 return true;
+            } else {
+                 console.error('Failed to ensure follow agent functions are available.');
+                 throw new Error('Follow agent functions not available.');
+            }
+        } catch (initError) {
+            console.error('Error ensuring follow agent is ready:', initError);
+            throw new Error(`Follow agent initialization failed: ${initError.message}`);
         }
-      });
-      return true;
-    }
-    
-    // Debug action - detailed diagnostics
-    if (message.action === 'debug') {
-      try {
-        console.log('Running debug extraction...');
-        debugExtraction()
-          .then(debugInfo => {
-            const result = {
-              success: true,
-              debugInfo: debugInfo
-            };
-            sendResponse(result);
-            
-            // Add instruction to use debug UI
+    };
+
+    // Use a switch statement for clarity
+    switch (message.action) {
+        case 'ping':
+            console.log('Content script responding to ping');
+            sendResponse({ success: true });
+            break;
+
+        case 'checkAgentLoaded':
+            console.log('Checking if agent is loaded...');
+            sendResponse({
+                success: true,
+                // Check for a specific function as a proxy for loaded state
+                agentLoaded: typeof window.performGetFollowStatus === 'function'
+            });
+            break;
+
+        case 'showDebugUI':
+            console.log('Showing debug UI...');
+            // Assuming debug UI functions exist on window
             if (typeof window.initDebugUI === 'function') {
-              console.log('%cUse window.initDebugUI() to see visual debug UI', 'font-weight: bold; color: #1DA1F2; font-size: 14px');
-              console.log('%cUse window.testFindFollowButton() to highlight and test follow buttons', 'font-weight: bold; color: #1DA1F2; font-size: 14px');
-              console.log('%cThe debug UI now includes direct button click testing!', 'font-weight: bold; color: #ff4500; font-size: 14px');
+                window.initDebugUI();
+                sendResponse({ success: true });
+            } else {
+                console.error('initDebugUI function not found on window.');
+                sendResponse({ success: false, error: 'Debug UI function not available.' });
+            }
+            break;
+
+        case 'extractUsernames':
+            console.log('Received extractUsernames request');
+            extractUsernames(message.maxScrolls || 50)
+                .then(results => sendResponse(results))
+                .catch(error => {
+                    console.error('Error during extraction:', error);
+                    sendResponse({ success: false, error: error.message });
+                });
+            return true; // Indicate async response
+
+        // <<< NEW: Test Flow Actions >>>
+        case 'getFollowStatus':
+            console.log(`Content script handling getFollowStatus for: ${message.username}`);
+            ensureAgentReady()
+                .then(() => {
+                    if (typeof window.performGetFollowStatus === 'function') {
+                        return window.performGetFollowStatus(message.username);
+                    } else {
+                        throw new Error('performGetFollowStatus function not found in follow-agent.js');
+                    }
+                })
+                .then(status => {
+                    console.log('Sending follow status back:', status);
+                    // Send the whole status object back, assuming it contains { weFollowThem, theyFollowUs }
+                     sendResponse(status); // Sending the raw status object back
+                     // Previously: sendResponse({ success: true, data: status });
+                 })
+                .catch(error => {
+                    console.error(`Error in getFollowStatus for ${message.username}:`, error);
+                    sendResponse({ error: error.message });
+                });
+            return true; // Indicate async response
+
+        case 'followUser':
+             console.log(`Content script handling followUser for: ${message.username}`);
+             ensureAgentReady()
+                 .then(() => {
+                    if (typeof window.performFollow === 'function') {
+                         return window.performFollow(message.username);
+                     } else {
+                         throw new Error('performFollow function not found in follow-agent.js');
+                     }
+                 })
+                 .then(result => {
+                     console.log(`Follow result for ${message.username}:`, result);
+                     sendResponse({ success: true, data: result }); // Send back any result data from performFollow
+                 })
+                 .catch(error => {
+                     console.error(`Error in followUser for ${message.username}:`, error);
+                     sendResponse({ error: error.message });
+                 });
+            return true; // Indicate async response
+
+        case 'unfollowUser':
+             console.log(`Content script handling unfollowUser for: ${message.username}`);
+             ensureAgentReady()
+                 .then(() => {
+                     if (typeof window.performUnfollow === 'function') {
+                         return window.performUnfollow(message.username);
+                     } else {
+                         throw new Error('performUnfollow function not found in follow-agent.js');
+                     }
+                 })
+                 .then(result => {
+                     console.log(`Unfollow result for ${message.username}:`, result);
+                     sendResponse({ success: true, data: result }); // Send back any result data from performUnfollow
+                 })
+                 .catch(error => {
+                     console.error(`Error in unfollowUser for ${message.username}:`, error);
+                     sendResponse({ error: error.message });
+                 });
+            return true; // Indicate async response
+        // <<< END NEW: Test Flow Actions >>>
+
+        // Other messages can be handled here if needed
+        default:
+            console.log('Content Script received unhandled message action:', message.action);
+            // Optionally send a negative response for unhandled actions
+            // sendResponse({ success: false, error: `Unknown action: ${message.action}` });
+            return false; // Indicate sync response or no response needed
+    }
+  });
+
+  // <<< NEW: Test Flow Message Handlers >>>
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'checkFollowStatus' || message.action === 'followUser' || message.action === 'unfollowUser') {
+      console.log(`Content Script: Received test action '${message.action}' for user ${message.username}`);
+      
+      // Ensure the follow agent and its functions are loaded
+      if (window.xGrowthAgentFollowAgentLoaded && typeof window[message.action] === 'function') {
+        // Call the corresponding function attached to window by follow-agent.js
+        window[message.action](message.username)
+          .then(result => {
+            console.log(`Content Script: Action '${message.action}' successful. Result:`, result);
+            if (message.action === 'checkFollowStatus') {
+                // Send back the specific status object
+                sendResponse(result); // Sends { weFollowThem: boolean, theyFollowUs: boolean }
+            } else {
+                // For follow/unfollow, send generic success
+                sendResponse({ success: true, data: result });
             }
           })
           .catch(error => {
-            console.error('Debug extraction error:', error);
-            sendResponse({
-              success: false,
-              error: error.message
-            });
+            console.error(`Content Script: Error executing action '${message.action}':`, error);
+            sendResponse({ success: false, error: error.message });
           });
-        return true;
-      } catch (error) {
-        console.error('Error starting debug:', error);
-        sendResponse({
-          success: false,
-          error: error.message
-        });
-        return true;
+      } else {
+        console.error(`Content Script: Follow agent function '${message.action}' not available.`);
+        sendResponse({ success: false, error: `Follow agent initialization failed: Function ${message.action} not available.` });
       }
-    }
-    
-    // Follow agent related messages
-    if (message.action === 'startFollowAgent' || 
-        message.action === 'stopFollowAgent' || 
-        message.action === 'getAgentStatus') {
       
-      // Log immediately upon receiving the message
-      console.log(`Content: Received ${message.action} message from background`, sender);
-        
-      // Make sure follow agent is loaded
-      checkFollowAgentStatus()
-        .then(() => {
-          console.log('Follow agent initialized, handling message:', message.action);
-          
-          // For startFollowAgent, try to call the function directly
-          if (message.action === 'startFollowAgent') {
-            // Try direct function call if it's available
-            if (typeof window.startAgent === 'function') {
-              console.log('Directly calling window.startAgent()');
-              
-              // Show a temporary status as we're starting
-              createStatusOverlay('Starting follow agent...');
-              
-              window.startAgent()
-                .then(result => {
-                  console.log('startAgent result:', result);
-                  // Keep the overlay - the agent will manage it now
-                  sendResponse(result);
-                })
-                .catch(error => {
-                  console.error('Error calling startAgent:', error);
-                  updateStatusOverlay('Error starting agent: ' + (error.message || 'Unknown error'));
-                  
-                  // Auto-hide overlay after 5 seconds
-                  setTimeout(removeStatusOverlay, 5000);
-                  
-                  sendResponse({ 
-                    success: false, 
-                    error: error.message || 'Error starting agent' 
-                  });
-                });
-            } else {
-              // Fall back to message passing
-              console.error('Direct function call not available - window.startAgent is missing');
-              updateStatusOverlay('Error: Agent functions not loaded properly. Please reload the page.');
-              
-              // Auto-hide overlay after 5 seconds
-              setTimeout(removeStatusOverlay, 5000);
-              
-              sendResponse({ 
-                success: false, 
-                error: 'Agent functions not initialized properly. Please reload the page.' 
-              });
-            }
-          } else if (message.action === 'stopFollowAgent' && typeof window.stopAgent === 'function') {
-            // Try direct function call
-            window.stopAgent()
-              .then(result => sendResponse(result))
-              .catch(error => sendResponse({ 
-                success: false, 
-                error: error.message || 'Error stopping agent' 
-              }));
-          } else if (message.action === 'getAgentStatus' && typeof window.getAgentStatus === 'function') {
-            // Try direct function call
-            window.getAgentStatus()
-              .then(result => sendResponse(result))
-              .catch(error => sendResponse({ 
-                success: false, 
-                error: error.message || 'Error getting agent status' 
-              }));
-          } else {
-            // Fall back to message passing for other actions
-            chrome.runtime.sendMessage(message)
-              .then(response => sendResponse(response))
-              .catch(error => sendResponse({ 
-                success: false, 
-                error: `Failed to execute ${message.action}: ${error.message}` 
-              }));
-          }
-        })
-        .catch(error => {
-          console.error('Error initializing follow agent:', error);
-          createStatusOverlay(`Failed to initialize follow agent: ${error.message}. Please reload the page and try again.`);
-          
-          sendResponse({ 
-            success: false, 
-            error: 'Failed to initialize follow agent: ' + error.message
-          });
-          
-          // Auto-hide overlay after 5 seconds
-          setTimeout(removeStatusOverlay, 5000);
-        });
-      
-      // Because we use both direct function calls and message forwarding,
-      // we return true to indicate we might respond asynchronously
-      return true;
+      return true; // Indicate asynchronous response
+    } else {
+      // Not a test flow message we handle here, return false
+      return false;
     }
-    
-    return false;
   });
+  // <<< END NEW >>>
 
   /**
    * Creates a status overlay on the page to show extraction progress

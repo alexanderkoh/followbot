@@ -18,6 +18,15 @@ document.addEventListener('DOMContentLoaded', function() {
   const tabManage = document.getElementById('tab-manage');
   const tabAgent = document.getElementById('tab-agent');
   const tabMetrics = document.getElementById('tab-metrics');
+  const tabTest = document.querySelector('.tab[data-tab="test"]'); // Use data attribute selector
+  const testContent = document.getElementById('test-content');
+  const testUsernameInput = document.getElementById('test-username');
+  const testDelayInput = document.getElementById('test-delay');
+  const testDelayUnitSelect = document.getElementById('test-delay-unit');
+  const runTestBtn = document.getElementById('run-test-btn');
+  const testStatusLog = document.getElementById('test-status-log');
+  const testResultsLog = document.getElementById('test-results-log');
+  const testErrorMessage = document.getElementById('test-error-message');
   const extractUsersContent = document.getElementById('extract-users-content');
   const userManagementContent = document.getElementById('user-management-content'); // Renamed from all-users-content
   const agentContent = document.getElementById('agent-content');
@@ -34,7 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const stopAgentBtn = document.getElementById('stop-agent');
   const openSettingsLink = document.getElementById('open-settings'); // Link in HTML now goes directly
   const agentStatusIndicator = document.getElementById('agent-status-indicator');
-  const statusText = agentStatusIndicator.querySelector('.status-text');
+  const statusText = agentStatusIndicator ? agentStatusIndicator.querySelector('.status-text') : null;
   const dailyFollowCount = document.getElementById('daily-follow-count');
   const dailyUnfollowCount = document.getElementById('daily-unfollow-count');
   const totalFollowCount = document.getElementById('total-follow-count'); // Now 'Currently Following'
@@ -52,119 +61,214 @@ document.addEventListener('DOMContentLoaded', function() {
   // --- State Variables ---
   let allUsersData = []; // Combined list { username, displayName, profileUrl, status, extractedAt, followedAt, unfollowedAt }
   let currentFilter = 'all'; // 'all', 'queued', 'followed', 'unfollowed'
-  let activeTab = 'extract'; // Default tab
 
   // --- Initialization ---
   init();
   
   // --- Event Listeners ---
-  extractUsernamesBtn.addEventListener('click', handleExtractUsernames);
-  clearQueueBtn.addEventListener('click', handleClearQueue); // Adjusted functionality
-  refreshListBtn.addEventListener('click', loadAndDisplayUsers);
-  searchInput.addEventListener('input', displayFilteredUserList); // Use debouncing later if needed
-  exportUsersBtn.addEventListener('click', exportUsersToCsv);
-  debugBtn.addEventListener('click', handleDebug);
-  settingsBtn.addEventListener('click', () => {
-    console.log('Settings button clicked.');
-    try {
-      const settingsUrl = chrome.runtime.getURL('popup/settings.html');
-      console.log('Attempting to open settings URL via chrome.tabs.create:', settingsUrl);
-      
-      // <<< Use chrome.tabs.create instead of window.open >>>
-      chrome.tabs.create({ url: settingsUrl });
-      
-      // Original approach (kept commented for reference)
-      // window.open(settingsUrl);
-      // chrome.runtime.openOptionsPage ? chrome.runtime.openOptionsPage() : window.open(chrome.runtime.getURL('popup/settings.html'));
-    } catch (error) {
-      console.error('Error opening settings page:', error);
-      showStatus(`Error opening settings: ${error.message}`, 'error');
-    }
-  });
-
-  // <<< NEW: List URL Extraction Listener >>>
-  extractFromListUrlBtn.addEventListener('click', handleExtractFromListUrl);
-
-  // <<< NEW: Community URL Extraction Listener >>>
-  extractFromCommunityUrlBtn.addEventListener('click', handleExtractFromCommunityUrl);
-
-  // Tab Switching
-  tabExtract.addEventListener('click', () => switchTab('extract'));
-  tabManage.addEventListener('click', () => switchTab('manage'));
-  tabAgent.addEventListener('click', () => switchTab('agent'));
-  tabMetrics.addEventListener('click', () => switchTab('metrics'));
-
-  // Filter Buttons
-  filterButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      currentFilter = button.dataset.filter;
-      filterButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      displayFilteredUserList(); // Re-render the list with the new filter
-    });
-  });
-
-  // Agent Controls
-  startAgentBtn.addEventListener('click', handleStartAgent);
-  stopAgentBtn.addEventListener('click', handleStopAgent);
-  // openSettingsLink logic removed, handled by standard link
   
   // --- Functions ---
   async function init() {
-    switchTab(activeTab); // Start on the default tab
-    await loadAndDisplayUsers();
-    await updateAgentStatus(); // Initial agent status update
+    console.log("Initializing popup script...");
+    let activeTabName = null; // Use a local variable for init scope
+    const tabButtons = document.querySelectorAll('.tabs .tab[data-tab]');
 
-    // Set up polling for agent status updates only when agent tab is active
-    setInterval(async () => {
-      if (activeTab === 'agent') { 
-    await updateAgentStatus();
+    if (tabButtons.length > 0) {
+      // Set default active tab to the first one found
+      activeTabName = tabButtons[0].dataset.tab;
+      console.log(`Default active tab determined: ${activeTabName}`);
+
+      // Add event listeners to all tab buttons
+      tabButtons.forEach(button => {
+        // Check if listener already exists (simple check, might not be foolproof)
+        if (!button.dataset.listenerAttached) { 
+          button.addEventListener('click', () => {
+            const tabName = button.dataset.tab;
+            console.log(`Tab button clicked: ${tabName}`);
+            if (tabName) {
+              switchTab(tabName);
+            }
+          });
+          button.dataset.listenerAttached = 'true'; // Mark as attached
+        } else {
+             console.log(`Listener already attached to tab: ${button.dataset.tab}`);
+        }
+      });
+      console.log(`Attached click listeners to ${tabButtons.length} tab buttons.`);
+    } else {
+      console.error("No tab buttons found with 'data-tab' attribute!");
+      showStatus('Error: UI tabs could not be initialized.', 'error');
+      return; // Stop initialization
+    }
+
+    // Attach other event listeners safely using optional chaining (?)
+    console.log("Attaching listeners for other controls...");
+    document.getElementById('extract-usernames')?.addEventListener('click', handleExtractUsernames);
+    document.getElementById('clear-queue')?.addEventListener('click', handleClearQueue);
+    document.getElementById('refresh-list')?.addEventListener('click', loadAndDisplayUsers);
+    document.getElementById('search-input')?.addEventListener('input', displayFilteredUserList);
+    document.getElementById('export-users')?.addEventListener('click', exportUsersToCsv);
+    document.getElementById('debug-btn')?.addEventListener('click', handleDebug);
+    document.getElementById('settings-btn')?.addEventListener('click', () => {
+        console.log('Settings button clicked.');
+        try {
+          const settingsUrl = chrome.runtime.getURL('popup/settings.html');
+          console.log('Attempting to open settings URL:', settingsUrl);
+          chrome.tabs.create({ url: settingsUrl });
+        } catch (error) {
+          console.error('Error opening settings page:', error);
+          showStatus(`Error opening settings: ${error.message}`, 'error');
+        }
+    });
+    document.getElementById('extract-from-list-url')?.addEventListener('click', handleExtractFromListUrl);
+    document.getElementById('extract-from-community-url')?.addEventListener('click', handleExtractFromCommunityUrl);
+    document.getElementById('start-agent')?.addEventListener('click', handleStartAgent);
+    document.getElementById('stop-agent')?.addEventListener('click', handleStopAgent);
+    document.getElementById('run-test-btn')?.addEventListener('click', handleRunTest);
+    document.getElementById('settings-form')?.addEventListener('submit', saveSettings);
+    
+    // Attach listeners for filter buttons
+    document.querySelectorAll('.filter-btn').forEach(button => {
+      if (!button.dataset.listenerAttached) {
+          button.addEventListener('click', () => {
+            currentFilter = button.dataset.filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            displayFilteredUserList();
+          });
+          button.dataset.listenerAttached = 'true';
       }
-    }, 3000); // Update agent status every 3 seconds
+    });
+    console.log("Attached listeners for filter buttons.");
+    
+    // Activate the default tab determined earlier
+    if (activeTabName) {
+       console.log(`Activating default tab: ${activeTabName}`);
+       switchTab(activeTabName);
+    } else {
+        console.error("Could not determine a default tab to activate.");
+        // Fallback or error display might be needed
+        showStatus("Error: Could not activate default UI tab.", 'error');
+        return;
+    }
+    
+    // Load initial data based on the active tab after switching
+    // (switchTab function already handles this)
+    // Example: 
+    // if (activeTabName === 'user-management') await loadAndDisplayUsers(); 
+    // if (activeTabName === 'agent-status') await updateAgentStatus();
+    console.log("Initial data load triggered by switchTab.");
 
-    // Set up polling for user list updates only when user management tab is active
+    // Set up polling intervals (ensure querySelectors use correct attributes)
+    console.log("Setting up polling intervals...");
     setInterval(async () => {
-        if (activeTab === 'manage') {
-            // Avoid full reload if user is typing in search bar
+      const agentStatusTabElement = document.querySelector('.tab[data-tab="agent-status"]');
+      if (agentStatusTabElement && agentStatusTabElement.classList.contains('active')) {
+        await updateAgentStatus();
+      }
+    }, 3000);
+
+    setInterval(async () => {
+        const userManagementTabElement = document.querySelector('.tab[data-tab="user-management"]');
+        const searchInput = document.getElementById('search-input'); 
+        if (userManagementTabElement && userManagementTabElement.classList.contains('active')) {
             if (document.activeElement !== searchInput) {
-                console.log('Auto-refreshing user list...');
                 await loadAndDisplayUsers();
-            } else {
-                console.log('Skipping user list auto-refresh while searching.');
             }
         }
-    }, 5000); // Update user list every 5 seconds
+    }, 5000);
+    console.log("Polling intervals set.");
+
+    // Listener for messages from background (test logs)
+    console.log("Setting up listener for background messages...");
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        console.log("Popup received message:", message);
+        const runTestBtn = document.getElementById('run-test-btn'); // Get button ref inside listener
+        const testStatusLog = document.getElementById('test-status-log'); // Get log ref inside listener
+        const testResultsLog = document.getElementById('test-results-log'); // Get log ref inside listener
+
+        if (message.type === 'testLog' && message.log) {
+            appendLog(testStatusLog, message.log);
+        } else if (message.type === 'testResult' && message.log) {
+            appendLog(testResultsLog, message.log);
+            if (runTestBtn) { runTestBtn.disabled = false; runTestBtn.textContent = 'Run Test'; }
+        } else if (message.type === 'testError' && message.error) {
+            showTestError(message.error);
+             if (runTestBtn) { runTestBtn.disabled = false; runTestBtn.textContent = 'Run Test'; }
+        } else if (message.type === 'testComplete') {
+             if (runTestBtn) { runTestBtn.disabled = false; runTestBtn.textContent = 'Run Test'; }
+        }
+    });
+    console.log("Background message listener attached.");
+    console.log("Popup initialization complete.");
   }
   
   function switchTab(tabName) {
-    activeTab = tabName; // Update active tab state
+    console.log(`Switching to tab: ${tabName}`);
     
     // Deactivate all tabs and content
-    [tabExtract, tabManage, tabAgent, tabMetrics].forEach(tab => tab.classList.remove('active'));
-    [extractUsersContent, userManagementContent, agentContent, metricsContent].forEach(content => content.classList.remove('active'));
+    document.querySelectorAll('.tabs .tab[data-tab]').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
     // Activate the selected tab and content
-    if (tabName === 'extract') {
-      tabExtract.classList.add('active');
-      extractUsersContent.classList.add('active');
-      // No data refresh needed for extraction tab
-    } else if (tabName === 'manage') {
-      tabManage.classList.add('active');
-      userManagementContent.classList.add('active');
-      loadAndDisplayUsers(); // Refresh user list
-    } else if (tabName === 'agent') {
-      tabAgent.classList.add('active');
-      agentContent.classList.add('active');
-      updateAgentStatus(); // Refresh agent status
-    } else if (tabName === 'metrics') {
-      tabMetrics.classList.add('active');
-      metricsContent.classList.add('active');
-      displayMetrics(); // Calculate and display metrics
+    const tabElement = document.querySelector(`.tab[data-tab="${tabName}"]`);
+    const contentElement = document.getElementById(`${tabName}-content`);
+
+    if (tabElement) {
+      tabElement.classList.add('active');
+       console.log(`Added 'active' class to tab button: ${tabName}`);
+    } else {
+        console.warn(`Tab button element not found for data-tab: ${tabName}`);
     }
+
+    if (contentElement) {
+      contentElement.classList.add('active');
+       console.log(`Added 'active' class to content area: #${contentElement.id}`);
+    } else {
+        console.warn(`Content element not found for ID: ${tabName}-content`);
+    }
+
+    // --- RESTORED DATA LOADING LOGIC --- 
+    console.log(`Running refresh logic for tab: ${tabName}`);
+    setTimeout(() => {
+       console.log(`Executing delayed refresh for tab: ${tabName}`);
+      if (tabName === 'user-management') {
+         loadAndDisplayUsers();
+      } else if (tabName === 'agent-status') {
+         updateAgentStatus();
+      } else if (tabName === 'metrics') {
+         displayMetrics();
+      } 
+      // Add other potentially complex data loading functions here if needed
+      
+    }, 50); // <<< Increased delay to 50ms >>>
+
+    // Handle simple/immediate UI updates outside the timeout
+    if (tabName === 'logs') {
+        // fetchLogs(); // Assuming this might load data, could also be delayed
+    } else if (tabName === 'settings') {
+        // loadSettings(); // Assuming this might load data, could also be delayed
+        loadSettings();
+    } else if (tabName === 'test') {
+        // This logic is simple UI reset, likely fine without delay
+        const testStatusLog = document.getElementById('test-status-log');
+        const testResultsLog = document.getElementById('test-results-log');
+        if(testStatusLog) testStatusLog.textContent = 'Test status will appear here...';
+        if(testResultsLog) testResultsLog.textContent = 'Detailed test results will appear here...';
+        hideTestError(); 
+    } 
+    console.log(`Finished switchTab function for: ${tabName}`);
+    // --- END RESTORED LOGIC --- 
   }
 
   // Refactored: Load data from storage and prepare combined list
   async function loadUserData() {
+      // Added check for userListContainer existence
+      const userListContainer = document.getElementById('user-list');
+      if (!userListContainer) {
+          console.warn('loadUserData called but user list container not found.');
+          return; // Don't proceed if the container isn't there
+      }
       try {
            const data = await chrome.storage.local.get(['extractedUsers', 'followedUsers']);
            console.log('[loadUserData] Data read from storage:', data);
@@ -203,6 +307,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Refactored: Load data and then trigger display
   async function loadAndDisplayUsers() {
+      // Added checks for relevant elements
+      const userListContainer = document.getElementById('user-list');
+      const searchInput = document.getElementById('search-input');
+      if (!userListContainer || !searchInput) {
+          console.warn('loadAndDisplayUsers called but required elements not found.');
+          return;
+      }
       // Add check to preserve search input value
       const currentSearchValue = searchInput.value;
       await loadUserData();
@@ -212,6 +323,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Refactored: Filter and render the user list based on current state
   function displayFilteredUserList() {
+      // Added checks for relevant elements
+      const userListContainer = document.getElementById('user-list');
+      const searchInput = document.getElementById('search-input');
+       if (!userListContainer || !searchInput) {
+          console.warn('displayFilteredUserList called but required elements not found.');
+          return;
+      }
     const searchTerm = searchInput.value.toLowerCase().trim();
 
     // 1. Filter by Status
@@ -713,9 +831,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
   async function updateAgentStatus() {
-      // Simplified - no changes needed here based on latest request structure
-      // This function already correctly fetches state and updates relevant elements
-      // It will show counts based on storage, which reflects the agent's actions.
+      // Added checks for element existence before updating
+      const agentStatusIndicator = document.getElementById('agent-status-indicator');
+      const statusText = agentStatusIndicator ? agentStatusIndicator.querySelector('.status-text') : null;
+      const currentAction = document.getElementById('current-action');
+      const dailyFollowCount = document.getElementById('daily-follow-count');
+      const dailyUnfollowCount = document.getElementById('daily-unfollow-count');
+      const totalFollowCount = document.getElementById('total-follow-count');
+      const followLimit = document.getElementById('follow-limit');
+      const startAgentBtn = document.getElementById('start-agent');
+      const stopAgentBtn = document.getElementById('stop-agent');
+
+      if (!agentStatusIndicator || !statusText || !currentAction || !dailyFollowCount || !dailyUnfollowCount || !totalFollowCount || !followLimit || !startAgentBtn || !stopAgentBtn) {
+          console.warn("updateAgentStatus called, but some required UI elements were not found.");
+          return; // Exit if essential elements are missing
+      }
+
        try {
           const data = await chrome.storage.local.get(['agentSettings', 'agentState', 'followedUsers']);
           const settings = data.agentSettings;
@@ -761,6 +892,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // --- NEW: Display Metrics --- 
   async function displayMetrics() {
+      // Added checks for element existence
+       const metricElements = {
+            f24h: document.getElementById('metric-follows-24h'),
+            u24h: document.getElementById('metric-unfollows-24h'),
+            n24h: document.getElementById('metric-net-24h'),
+            f7d: document.getElementById('metric-follows-7d'),
+            u7d: document.getElementById('metric-unfollows-7d'),
+            n7d: document.getElementById('metric-net-7d'),
+            f30d: document.getElementById('metric-follows-30d'),
+            u30d: document.getElementById('metric-unfollows-30d'),
+            n30d: document.getElementById('metric-net-30d'),
+            fAll: document.getElementById('metric-follows-all'),
+            uAll: document.getElementById('metric-unfollows-all'),
+            // Add placeholders if needed
+       };
+       // Check if at least one metric element is missing
+       if (Object.values(metricElements).some(el => !el)) {
+            console.warn("displayMetrics called, but some metric UI elements were not found.");
+            return;
+       }
+
     try {
       const data = await chrome.storage.local.get(['followedUsers', 'agentState']); // Agent state has daily counts
       const followedUsers = data.followedUsers || [];
@@ -785,29 +937,24 @@ document.addEventListener('DOMContentLoaded', function() {
       }
        // We can't accurately calculate 7d/30d without historical daily data yet
 
-      // --- Update HTML Elements ---
-      // 24h
-      document.getElementById('metric-follows-24h').textContent = follows24h;
-      document.getElementById('metric-unfollows-24h').textContent = unfollows24h;
-      document.getElementById('metric-net-24h').textContent = follows24h - unfollows24h;
-      // Placeholder for followbacks-24h
+      // --- Update HTML Elements --- (using the elements object)
+      metricElements.f24h.textContent = follows24h;
+      metricElements.u24h.textContent = unfollows24h;
+      metricElements.n24h.textContent = follows24h - unfollows24h;
       
-      // 7d - Placeholders for now
-      document.getElementById('metric-follows-7d').textContent = '0'; // Placeholder
-      document.getElementById('metric-unfollows-7d').textContent = '0'; // Placeholder
-      document.getElementById('metric-net-7d').textContent = '0'; // Placeholder
-      // Placeholder for followbacks-7d
+      // 7d - Placeholders 
+      metricElements.f7d.textContent = '0'; 
+      metricElements.u7d.textContent = '0'; 
+      metricElements.n7d.textContent = '0'; 
 
-      // 30d - Placeholders for now
-      document.getElementById('metric-follows-30d').textContent = '0'; // Placeholder
-      document.getElementById('metric-unfollows-30d').textContent = '0'; // Placeholder
-      document.getElementById('metric-net-30d').textContent = '0'; // Placeholder
-      // Placeholder for followbacks-30d
+      // 30d - Placeholders 
+      metricElements.f30d.textContent = '0'; 
+      metricElements.u30d.textContent = '0'; 
+      metricElements.n30d.textContent = '0'; 
 
       // All Time
-      document.getElementById('metric-follows-all').textContent = totalFollowsAll;
-      document.getElementById('metric-unfollows-all').textContent = totalUnfollowsAll;
-      // Placeholders for followback-rate-all and avg-unfollow-time
+      metricElements.fAll.textContent = totalFollowsAll;
+      metricElements.uAll.textContent = totalUnfollowsAll;
 
     } catch (error) {
       console.error('Error displaying metrics:', error);
@@ -885,4 +1032,184 @@ document.addEventListener('DOMContentLoaded', function() {
           showStatus(`Export Error: ${error.message}`, 'error');
     }
   }
+
+  // <<< NEW: Test Functions >>>
+  function handleRunTest() {
+    if (!testUsernameInput || !testDelayInput || !testDelayUnitSelect || !runTestBtn || !testStatusLog || !testResultsLog) {
+        console.error("Test UI elements not found.");
+        showTestError("Internal error: UI elements missing.");
+        return;
+    }
+
+    const username = testUsernameInput.value.trim();
+    const delayValue = parseInt(testDelayInput.value, 10);
+    const delayUnit = testDelayUnitSelect.value;
+
+    // --- Validation ---
+    if (!username) {
+        showTestError("Please enter a Twitter username.");
+        return;
+    }
+    if (!username.startsWith('@')) {
+        showTestError("Username must start with '@'.");
+        return;
+    }
+    if (isNaN(delayValue) || delayValue <= 0) {
+        showTestError("Please enter a valid positive delay number.");
+        return;
+    }
+
+    hideTestError(); // Clear previous errors
+    testStatusLog.textContent = ''; // Clear logs
+    testResultsLog.textContent = '';
+
+    // --- Calculate Delay ---
+    let delayMs = 0;
+    if (delayUnit === 'seconds') {
+        delayMs = delayValue * 1000;
+    } else if (delayUnit === 'minutes') {
+        delayMs = delayValue * 60 * 1000;
+    } else {
+        showTestError("Invalid delay unit selected.");
+        return;
+    }
+
+    // --- Send to Background ---
+    console.log(`Running test for ${username} with delay ${delayMs}ms`);
+    appendLog(testStatusLog, `Starting test for ${username}...`);
+    runTestBtn.disabled = true;
+    runTestBtn.textContent = 'Running...';
+
+    chrome.runtime.sendMessage({
+        action: 'runFollowTest',
+        username: username,
+        delayMs: delayMs
+    }, (response) => {
+         if (chrome.runtime.lastError) {
+            console.error("Error sending test message to background:", chrome.runtime.lastError.message);
+            showTestError(`Error starting test: ${chrome.runtime.lastError.message}`);
+            runTestBtn.disabled = false;
+            runTestBtn.textContent = 'Run Test';
+        } else if (response && response.status === 'error') {
+            console.error("Background script reported error on start:", response.message);
+            showTestError(`Background error: ${response.message}`);
+            runTestBtn.disabled = false;
+            runTestBtn.textContent = 'Run Test';
+        } else {
+            console.log("Test message sent to background successfully.");
+            // Button will be re-enabled by message listener on completion/error
+        }
+    });
+  }
+
+  function appendLog(logElement, message) {
+      if (!logElement) return;
+      const timestamp = new Date().toLocaleTimeString();
+      logElement.textContent += `[${timestamp}] ${message}\\n`;
+      logElement.scrollTop = logElement.scrollHeight; // Auto-scroll
+  }
+
+  function showTestError(message) {
+      if (!testErrorMessage) return;
+      testErrorMessage.textContent = message;
+      testErrorMessage.classList.remove('hidden');
+  }
+
+  function hideTestError() {
+       if (!testErrorMessage) return;
+       testErrorMessage.classList.add('hidden');
+       testErrorMessage.textContent = '';
+  }
+  // <<< END NEW >>>
+
+  // <<< NEW: Settings Functions >>>
+  async function loadSettings() {
+    try {
+      const data = await chrome.storage.local.get('agentSettings');
+      const settings = data.agentSettings || {};
+      console.log('Loading settings into form:', settings);
+
+      // Populate simple number inputs
+      document.getElementById('dailyFollowLimit').value = settings.dailyFollowLimit ?? 50;
+      document.getElementById('hourlyFollowLimit').value = settings.hourlyFollowLimit ?? 0;
+      document.getElementById('maxActionsSession').value = settings.maxActionsSession ?? 0;
+      document.getElementById('followInterval').value = settings.followInterval ?? 60;
+      document.getElementById('timeVariance').value = settings.timeVariance ?? 20;
+      document.getElementById('unfollowDays').value = settings.unfollowDays ?? 3;
+      document.getElementById('unfollowSeconds').value = settings.unfollowSeconds ?? 0;
+      document.getElementById('minThinkingTime').value = settings.minThinkingTime ?? 250;
+      document.getElementById('maxThinkingTime').value = settings.maxThinkingTime ?? 1250;
+
+      // Populate checkboxes
+      document.getElementById('enableAutoFollow').checked = settings.enableAutoFollow ?? true; // Default true based on background.js
+      document.getElementById('enableAutoUnfollow').checked = settings.enableAutoUnfollow ?? true; // Default true based on background.js
+
+    } catch (error) {
+      console.error('Error loading settings:', error);
+      showSettingsStatus(`Error loading settings: ${error.message}`, 'error');
+    }
+  }
+
+  async function saveSettings(event) {
+    if (event) event.preventDefault(); // Prevent default form submission
+    
+    const saveButton = document.getElementById('save-settings-btn');
+    setButtonLoading(saveButton, true);
+    showSettingsStatus('Saving...', 'info');
+
+    try {
+      const newSettings = {
+        dailyFollowLimit: parseInt(document.getElementById('dailyFollowLimit').value, 10) || 50,
+        hourlyFollowLimit: parseInt(document.getElementById('hourlyFollowLimit').value, 10) || 0,
+        maxActionsSession: parseInt(document.getElementById('maxActionsSession').value, 10) || 0,
+        followInterval: parseInt(document.getElementById('followInterval').value, 10) || 60,
+        timeVariance: parseInt(document.getElementById('timeVariance').value, 10) || 20,
+        unfollowDays: parseInt(document.getElementById('unfollowDays').value, 10) || 3,
+        unfollowSeconds: parseInt(document.getElementById('unfollowSeconds').value, 10) || 0,
+        minThinkingTime: parseInt(document.getElementById('minThinkingTime').value, 10) || 250,
+        maxThinkingTime: parseInt(document.getElementById('maxThinkingTime').value, 10) || 1250,
+        enableAutoFollow: document.getElementById('enableAutoFollow').checked,
+        enableAutoUnfollow: document.getElementById('enableAutoUnfollow').checked,
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Validation (simple example)
+      if (newSettings.followInterval < 1) newSettings.followInterval = 1;
+      if (newSettings.timeVariance < 0 || newSettings.timeVariance > 100) newSettings.timeVariance = 20;
+      if (newSettings.unfollowSeconds < 0) newSettings.unfollowSeconds = 0;
+      if (newSettings.minThinkingTime < 0) newSettings.minThinkingTime = 0;
+      if (newSettings.maxThinkingTime < newSettings.minThinkingTime) newSettings.maxThinkingTime = newSettings.minThinkingTime + 500;
+
+      console.log('Saving settings:', newSettings);
+      await chrome.storage.local.set({ agentSettings: newSettings });
+      showSettingsStatus('Settings saved successfully!', 'success');
+
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      showSettingsStatus(`Error saving settings: ${error.message}`, 'error');
+    } finally {
+      setButtonLoading(saveButton, false);
+    }
+  }
+
+  // Helper to show status specifically in the settings tab
+  function showSettingsStatus(message, type) {
+    const settingsStatus = document.getElementById('settings-status');
+    if (settingsStatus) {
+      settingsStatus.textContent = message;
+      settingsStatus.className = `status ${type}`; // Ensure class includes 'status'
+      settingsStatus.classList.remove('hidden');
+
+      // Auto-hide non-error messages after 3 seconds
+      if (type !== 'error') {
+        setTimeout(() => {
+          settingsStatus.classList.add('hidden');
+        }, 3000);
+      }
+    } else {
+      // Fallback to general status message if settings one isn't found (shouldn't happen)
+      showStatus(message, type);
+    }
+  }
+  // <<< END NEW >>>
 }); 

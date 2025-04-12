@@ -23,11 +23,36 @@ chrome.runtime.onInstalled.addListener(() => {
           followInterval: 60,
           unfollowDays: 3,
           timeVariance: 20,
-          enableAutoFollow: false,
-          enableAutoUnfollow: false,
-          lastUpdated: new Date().toISOString()
+          enableAutoFollow: true,
+          enableAutoUnfollow: true,
+          lastUpdated: new Date().toISOString(),
+          hourlyFollowLimit: 0,
+          maxActionsSession: 0,
+          unfollowSeconds: 0,
+          minThinkingTime: 250,
+          maxThinkingTime: 1250
         }
       });
+    } else {
+      const currentSettings = data.agentSettings;
+      let needsUpdate = false;
+      const defaultSettings = {
+          hourlyFollowLimit: 0,
+          maxActionsSession: 0,
+          unfollowSeconds: 0,
+          minThinkingTime: 250,
+          maxThinkingTime: 1250
+      };
+      for (const key in defaultSettings) {
+          if (!(key in currentSettings)) {
+              currentSettings[key] = defaultSettings[key];
+              needsUpdate = true;
+          }
+      }
+      if (needsUpdate) {
+          console.log('Updating existing settings with new default fields...', currentSettings);
+          chrome.storage.local.set({ agentSettings: currentSettings });
+      }
     }
     
     // Reset agent state whenever the extension is reloaded
@@ -224,161 +249,344 @@ async function injectScriptsSequentially(tabId) {
   }
 }
 
+// Helper function to find an active Twitter/X tab
+async function findActiveTwitterTab() {
+  const tabs = await chrome.tabs.query({
+    active: true,
+    url: ["*://twitter.com/*", "*://x.com/*"]
+  });
+  if (tabs.length > 0) {
+    // Prefer the currently active window's tab if multiple matches
+    const activeWindowTabs = tabs.filter(tab => tab.active && tab.windowId === chrome.windows.WINDOW_ID_CURRENT);
+    if (activeWindowTabs.length > 0) return activeWindowTabs[0];
+    // Fallback to the first found tab
+    return tabs[0];
+  }
+  return null; // No suitable tab found
+}
+
+// Helper function to send logs/results back to the popup
+function sendTestLog(type, data) {
+  const message = type === 'testError' ? { type, error: data } : { type, log: data };
+  console.log(`[Test Flow] Sending to popup: ${type}`, data);
+  chrome.runtime.sendMessage(message).catch(err => {
+    // Ignore errors if the popup isn't open
+    if (err.message !== "Could not establish connection. Receiving end does not exist.") {
+       console.warn("Error sending message to popup:", err.message);
+    }
+  });
+}
+
+// --- Main Test Flow Logic ---
+let isTestRunning = false; // Prevent multiple concurrent tests
+
+async function runFollowTestFlow(username, delayMs) {
+  if (isTestRunning) {
+    sendTestLog('testError', 'Another test is already in progress.');
+    return;
+  }
+  isTestRunning = true;
+  sendTestLog('testLog', `Starting test for ${username}...`);
+
+  try {
+    const targetTab = await findActiveTwitterTab();
+    if (!targetTab) {
+      throw new Error("No active Twitter/X tab found. Please navigate to twitter.com or x.com.");
+    }
+    const targetTabId = targetTab.id; // Store the tab ID
+    sendTestLog('testLog', `Using active tab: ${targetTabId} (${targetTab.url})`);
+
+    // --- Navigation Step ---
+    const usernameWithoutAt = username.startsWith('@') ? username.substring(1) : username;
+    const profileUrl = `https://x.com/${usernameWithoutAt}`;
+    sendTestLog('testLog', `Navigating tab ${targetTabId} to profile: ${profileUrl}...`);
+
+    await chrome.tabs.update(targetTabId, { url: profileUrl });
+
+    // --- Wait for Navigation Step ---
+    sendTestLog('testLog', 'Waiting for profile page navigation to complete...');
+    try {
+        await new Promise((resolve, reject) => {
+            const listener = (tabId, changeInfo, tab) => {
+                // Wait for the correct tab to finish loading the target profile URL
+                if (tabId === targetTabId && changeInfo.status === 'complete' && tab.url && tab.url.startsWith(profileUrl)) {
+                    chrome.tabs.onUpdated.removeListener(listener); // Clean up listener
+                    console.log(`Tab ${targetTabId} finished loading URL: ${profileUrl}`);
+                    resolve();
+                }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+            // Add a timeout in case navigation hangs
+            setTimeout(() => {
+                chrome.tabs.onUpdated.removeListener(listener); // Clean up listener
+                reject(new Error('Tab navigation timed out after 30 seconds'));
+            }, 30000);
+        });
+    } catch (navError) {
+        sendTestLog('testError', `Navigation failed: ${navError.message}`);
+        isTestRunning = false;
+        return; // Stop the test if navigation fails
+    }
+    sendTestLog('testLog', `Navigation to ${profileUrl} complete.`);
+    // Small delay for page rendering after load complete
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+    // Ensure scripts are injected *after* navigation
+    sendTestLog('testLog', 'Ensuring content scripts are ready on profile page...');
+    const injectionResult = await injectScriptsSequentially(targetTabId);
+    if (!injectionResult.success) {
+        throw new Error(injectionResult.error || "Failed to inject necessary scripts into the profile page.");
+    }
+    sendTestLog('testLog', 'Content scripts ready on profile page.');
+
+
+    // Helper to send message to content script and await response
+    const sendMessageToContent = (action, data) => {
+        return new Promise((resolve, reject) => {
+            const timeout = 30000; // 30 second timeout for content script actions
+            const timer = setTimeout(() => {
+                 reject(new Error(`Action '${action}' timed out after ${timeout/1000}s`));
+            }, timeout);
+
+            chrome.tabs.sendMessage(targetTabId, { action, ...data }, response => {
+                clearTimeout(timer);
+                if (chrome.runtime.lastError) {
+                    reject(new Error(`Content script communication error: ${chrome.runtime.lastError.message}`));
+                } else if (response && response.error) {
+                     reject(new Error(`Content script error (${action}): ${response.error}`));
+                 } else if (action === 'checkFollowStatus' && response && typeof response.weFollowThem !== 'undefined' && typeof response.theyFollowUs !== 'undefined') {
+                     // Handle the specific { weFollowThem, theyFollowUs } response for checkFollowStatus
+                     resolve(response);
+                 } else if (response && response.success) {
+                    // Handle generic { success: true, data: ... } responses for other actions (e.g., followUser, unfollowUser)
+                    resolve(response.data || {}); // Return data if provided
+                 } else {
+                     // If it's neither the specific status object nor a generic success object
+                     reject(new Error(`Invalid or unexpected response from content script for action '${action}'. Response: ${JSON.stringify(response)}`));
+                 }
+            });
+        });
+    };
+
+    // 1. Determine current follow status (NOW runs on the profile page)
+    sendTestLog('testLog', `Checking initial follow status for ${username}...`);
+    let initialStatus;
+    try {
+        initialStatus = await sendMessageToContent('checkFollowStatus', { username });
+         sendTestLog('testLog', `Initial status for ${username}: WeFollow=${initialStatus.weFollowThem}, TheyFollow=${initialStatus.theyFollowUs}`);
+    } catch (err) {
+         // If status check fails (e.g., user not found), log and end.
+         throw new Error(`Failed to get initial status for ${username}: ${err.message}`);
+    }
+
+    // --- NEW Logic Branching ---
+    if (initialStatus.weFollowThem) {
+        // Scenario 1: We are already following the user.
+        if (initialStatus.theyFollowUs) {
+            // Sub-Scenario 1a: They follow us back.
+            sendTestLog('testResult', `Already following ${username}, and they follow back. Test concludes.`);
+        } else {
+            // Sub-Scenario 1b: They do NOT follow us back.
+            sendTestLog('testLog', `Already following ${username}, but they DO NOT follow back. Attempting unfollow...`);
+            try {
+                await sendMessageToContent('unfollowUser', { username });
+                sendTestLog('testResult', `Unfollowed ${username} successfully (as they didn't follow back).`);
+            } catch (unfollowErr) {
+                sendTestLog('testError', `Failed to unfollow ${username} (who didn't follow back): ${unfollowErr.message}`);
+            }
+        }
+        // Test ends after handling existing follow status
+        isTestRunning = false;
+        return;
+
+    } else {
+        // Scenario 2: We are NOT following the user.
+        if (initialStatus.theyFollowUs) {
+             // Sub-Scenario 2a: They follow us, but we don't follow them.
+             // This case wasn't explicitly handled before, but the test could potentially just follow them.
+             // For simplicity, let's treat this like the main case: follow, wait, check, unfollow if needed.
+            sendTestLog('testLog', `${username} already follows you, but you are not following them. Proceeding with follow-wait-check.`);
+        }
+        
+        // Sub-Scenario 2b: Neither follows the other (or 2a leads here).
+        // Execute Follow -> Wait -> Check -> Unfollow logic.
+        try {
+            sendTestLog('testLog', `Attempting to follow ${username}...`);
+            await sendMessageToContent('followUser', { username });
+            sendTestLog('testLog', `Successfully initiated follow for ${username}. Waiting for ${delayMs / 1000}s...`);
+        } catch (followErr) {
+            throw new Error(`Failed to follow ${username}: ${followErr.message}`); // Propagate error
+        }
+
+        // Wait for the user-defined delay
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        sendTestLog('testLog', `Wait finished. Checking if ${username} followed back...`);
+
+        // Check if the user followed back
+        let finalStatus;
+        try {
+            finalStatus = await sendMessageToContent('checkFollowStatus', { username });
+            sendTestLog('testLog', `Follow-back status for ${username}: TheyFollow=${finalStatus.theyFollowUs}`);
+        } catch (err) {
+            sendTestLog('testError', `Failed to check follow-back status for ${username}: ${err.message}. Cannot determine outcome.`);
+            isTestRunning = false;
+            return; // End test here due to inability to verify
+        }
+
+        // Handle result: Unfollow if no follow-back
+        if (finalStatus.theyFollowUs) {
+            sendTestLog('testResult', `${username} followed back successfully! Test complete.`);
+        } else {
+            sendTestLog('testLog', `${username} did not follow back. Attempting to unfollow...`);
+            try {
+                await sendMessageToContent('unfollowUser', { username });
+                sendTestLog('testResult', `User ${username} did not follow back. Unfollowed successfully.`);
+            } catch (unfollowErr) {
+                sendTestLog('testError', `User ${username} did not follow back. Failed to unfollow afterwards: ${unfollowErr.message}`);
+            }
+        }
+    }
+    // --- END NEW Logic Branching ---
+
+  } catch (error) {
+    console.error("Error during test flow:", error);
+    sendTestLog('testError', `Test failed: ${error.message}`);
+  } finally {
+    isTestRunning = false;
+    sendTestLog('testLog', 'Test sequence finished.');
+     // Send a final completion signal if needed by popup logic
+     chrome.runtime.sendMessage({ type: 'testComplete' }).catch(() => {});
+  }
+}
+
 // Listen for messages from popup or content scripts
-// Original Listener Code (Restored)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Log immediately upon entering the listener
   console.log('Background onMessage: Listener entered. Message:', message, 'Sender:', sender);
-  
-  console.log('Background received message:', message);
-  
-  if (message.action === 'injectContentScript') {
-    const tabId = message.tabId;
-    if (!tabId) {
-      sendResponse({ success: false, error: 'No tab ID provided' });
-      return true;
-    }
-    
-    // Use the helper function for sequential injection
-    injectScriptsSequentially(tabId)
-      .then((result) => {
-        if (result.success) {
-          console.log('Scripts injected successfully via message request');
-          sendResponse({ success: true });
-        } else {
-          console.warn('Script injection returned unsuccessful result:', result);
-          sendResponse({ success: false, error: result.error || 'Script injection failed' });
-        }
-      })
-      .catch((error) => {
-        console.error('Error injecting scripts via message request:', error);
-        sendResponse({ success: false, error: error.message });
-      });
-    
-    return true; // Indicates we'll respond asynchronously
-  }
-  
-  // Forward messages to content script if needed
-  if (message.action === 'startFollowAgent' || 
-      message.action === 'stopFollowAgent' || 
-      message.action === 'getAgentStatus') {
-    
-    // Log that we received the message
-    console.log(`Background: Received ${message.action} message from sender:`, sender);
-    
-    // --- REVERTING SIMPLIFICATION - Using original logic with logs --- 
-    // Get active tab
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || tabs.length === 0) {
-        sendResponse({ success: false, error: 'No active tab found' });
-        return;
+
+  // Use a switch statement for better organization
+  switch (message.action) {
+    case 'injectContentScript':
+      const tabId = message.tabId;
+      if (!tabId) {
+        sendResponse({ success: false, error: 'No tab ID provided' });
+        return true; // Keep channel open for async response
       }
-      
-      const tab = tabs[0];
-      
-      // Check if the tab has a valid URL (not chrome:// or other restricted protocols)
-      if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
-        sendResponse({ 
-          success: false, 
-          error: 'Cannot access extension functions on browser system pages. Please navigate to Twitter/X first.' 
-        });
-        return;
-      }
-      
-      // Check if tab is on Twitter/X
-      if (!tab.url.includes('twitter.com') && !tab.url.includes('x.com')) {
-        sendResponse({
-          success: false,
-          error: 'This extension only works on Twitter/X. Please navigate to Twitter/X first.'
-        });
-        return;
-      }
-      
-      // Log before forwarding the message
-      console.log(`Background: Forwarding ${message.action} message via attemptMessageSend to tab`, tab.id); // Updated log text
-      
-      // Multiple attempts to ensure scripts are properly loaded
-      const attemptMessageSend = (attempt = 0) => {
-        console.log(`Background (attempt ${attempt}): Inside attemptMessageSend for action: ${message.action}`);
-        if (attempt >= 3) {
-          sendResponse({
-            success: false,
-            error: 'Failed to communicate with the page after multiple attempts. Try refreshing the page.'
-          });
-          return;
-        }
-        
-        console.log(`Background (attempt ${attempt}): Calling injectScriptsSequentially...`);
-        // First ensure scripts are injected using our helper function
-        injectScriptsSequentially(tab.id)
-          .then((result) => {
-            console.log(`Background (attempt ${attempt}): injectScriptsSequentially result:`, result);
-            if (!result.success) {
-              if (result.needsRetry && attempt < 2) {
-                console.log(`Script injection needs retry (attempt ${attempt + 1})`);
+      injectScriptsSequentially(tabId)
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ success: false, error: err.message }));
+      return true; // Indicate async response
+
+    case 'extractUsernames':
+      if (sender.tab && sender.tab.id) {
+          chrome.tabs.sendMessage(sender.tab.id, message, (response) => {
+              if (chrome.runtime.lastError) {
+                  console.error("Error sending 'extractUsernames' to content script:", chrome.runtime.lastError.message);
+                  sendResponse({ success: false, error: chrome.runtime.lastError.message });
+              } else {
+                  sendResponse(response);
               }
-            }
-            
-            console.log(`Background (attempt ${attempt}): Waiting briefly after script injection...`);
-            // Give a bit more time for scripts to fully initialize
-            return new Promise(resolve => setTimeout(resolve, 800));
-          })
-          .then(() => {
-            console.log(`Background (attempt ${attempt}): Preparing to forward message to content script...`);
-            // Forward message to content script with proper error handling
-            return new Promise((resolve, reject) => {
-              const timeoutId = setTimeout(() => {
-                reject(new Error('Message sending timed out'));
-              }, 3000);
-              
-              chrome.tabs.sendMessage(tab.id, message, (response) => {
-                clearTimeout(timeoutId);
-                
-                if (chrome.runtime.lastError) {
-                  reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                  resolve(response);
-                }
-              });
-            });
-          })
-          .then(response => {
-            console.log(`Background (attempt ${attempt}): Received response from content script:`, response);
-            sendResponse(response);
-          })
-          .catch(error => {
-            console.error(`Background (attempt ${attempt}): Error during message handling:`, error.message);
-            console.error(`Background (attempt ${attempt}): Error stack:`, error.stack);
-            
-            // Retry logic for specific errors
-            if (attempt < 2 && error.message && (
-                error.message.includes('receiving end does not exist') ||
-                error.message.includes('connection') ||
-                error.message.includes('timeout')
-            )) {
-              console.log(`Will retry message sending (attempt ${attempt + 1})`);
-              setTimeout(() => attemptMessageSend(attempt + 1), 1000 * (attempt + 1));
-            } else {
-              sendResponse({ 
-                success: false, 
-                error: 'Error communicating with Twitter/X page. Try refreshing the page and try again.'
-              });
-            }
           });
-      };
-      
-      // Start with first attempt
-      attemptMessageSend();
-    });
-    
-    // IMPORTANT: Because the chrome.tabs.query is asynchronous,
-    // the listener function finishes executing HERE before the query callback runs.
-    // To keep the message channel open for the asynchronous sendResponse,
-    // the listener MUST return true.
-    return true; // <<<<< THIS IS CORRECTLY PLACED
-    // --- END REVERT --- 
+          return true; // Indicate async response
+      } else {
+          sendResponse({ success: false, error: 'Sender tab information missing.' });
+          return false;
+      }
+
+    case 'getAgentStatus':
+      Promise.all([
+          chrome.storage.local.get('agentState'),
+          chrome.storage.local.get('agentSettings')
+      ]).then(([stateData, settingsData]) => {
+          sendResponse({
+              success: true,
+              status: stateData.agentState || {},
+              settings: settingsData.agentSettings || {}
+          });
+      }).catch(error => {
+          console.error("Error getting agent status:", error);
+          sendResponse({ success: false, error: error.message });
+      });
+      return true; // Indicate async response
+
+    case 'startAgent':
+      console.log("Received startAgent message");
+      // Placeholder: Implement actual agent starting logic here
+      // This would involve setting agentState.isRunning to true,
+      // potentially resetting daily counts if needed, and starting the follow/unfollow loop (e.g., using alarms).
+      chrome.storage.local.set({ agentState: { isRunning: true /* ... other state fields */ } }, () => {
+           console.log("Agent state set to running (basic)");
+           // TODO: Start the actual agent processing loop/alarm
+           sendResponse({ success: true, message: 'Agent started (basic implementation).' });
+      });
+      // For now, just acknowledge. Need full agent logic implementation.
+      // sendResponse({ success: true, message: 'Agent starting...' });
+       return true; // Indicate async response
+
+    case 'stopAgent':
+      console.log("Received stopAgent message");
+      // Placeholder: Implement actual agent stopping logic here
+      // This would involve setting agentState.isRunning to false,
+      // clearing any pending actions/timeouts/alarms related to the agent loop.
+       chrome.storage.local.set({ agentState: { isRunning: false /* ... other state fields */ } }, () => {
+           console.log("Agent state set to stopped (basic)");
+           // TODO: Stop the actual agent processing loop/alarm
+           sendResponse({ success: true, message: 'Agent stopped (basic implementation).' });
+       });
+      // sendResponse({ success: true, message: 'Agent stopping...' });
+      return true; // Indicate async response
+
+    // <<< NEW: Handle Test Flow Request >>>
+    case 'runFollowTest':
+        console.log("Received runFollowTest message with:", message);
+        const { username, delayMs } = message;
+        if (!username || typeof delayMs !== 'number') {
+            sendResponse({ status: 'error', message: 'Invalid parameters for test.' });
+            return false; // No async response needed
+        }
+        // Run the flow asynchronously, don't block the listener
+        runFollowTestFlow(username, delayMs).catch(err => {
+             console.error("Unhandled error running test flow:", err);
+             // Send an error log if the flow itself throws unhandled exception
+             sendTestLog('testError', `Unexpected error in test flow: ${err.message}`);
+        });
+        // Acknowledge receipt of the request immediately
+        sendResponse({ status: 'received', message: 'Test command received by background.' });
+        return false; // Indicate sync response (acknowledgement only)
+
+    // <<< NEW: Handle requests from Content Script for follow actions (if needed) >>>
+    // Example: If content script needs background to store data after a follow
+    case 'recordFollowAction': // Example action name
+        console.log("Background received recordFollowAction:", message.data);
+        // TODO: Add logic to update storage (e.g., followedUsers list)
+        // Example: updateFollowedUsers(message.data.username, /* success status */);
+        sendResponse({ success: true }); // Acknowledge
+        return false;
+
+    case 'recordUnfollowAction': // Example action name
+         console.log("Background received recordUnfollowAction:", message.data);
+         // TODO: Add logic to update storage (e.g., followedUsers list)
+         // Example: updateFollowedUsers(message.data.username, /* success status, mark as unfollowed */);
+         sendResponse({ success: true }); // Acknowledge
+         return false;
+
+    // <<< NEW: Content script ping handler >>>
+    case 'ping':
+        console.log("Background received ping from content script");
+        sendResponse({ success: true, response: 'pong' });
+        return false; // Synchronous response
+
+    default:
+      console.log('Unknown message action received:', message.action);
+      // Optionally send a response for unhandled actions
+      // sendResponse({ success: false, error: 'Unknown action' });
+      break; // Explicitly break
   }
-  
-  // If the message wasn't handled by the above 'if' blocks, return false.
-  return false; // Correct for synchronous messages or unhandled ones
-}); 
+
+  // Default return value if no async response is indicated
+  // Important: If any case returns true, this line is not reached for that case.
+   console.log(`Finished processing action '${message.action}' synchronously or did not handle.`);
+  return false;
+});
+
+console.log('Background Script: Event listeners registered and script initialized.'); 

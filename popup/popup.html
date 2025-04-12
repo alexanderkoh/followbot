@@ -643,6 +643,109 @@
           border-radius: 3px;
           font-family: monospace;
       }
+
+    /* --- Settings Tab Styles --- */
+    #settings-content h2 {
+      font-size: 16px;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    .settings-section {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-section:last-of-type {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+    .settings-section h3 {
+      font-size: 14px;
+      color: var(--secondary);
+      margin: 0 0 12px 0;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr); /* Two columns */
+      gap: 12px 16px; /* Row gap, Column gap */
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-group label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .form-group input[type="number"],
+    .form-group input[type="text"] { /* Style text inputs too if needed */
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input[type="number"]:focus,
+    .form-group input[type="text"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(29, 161, 242, 0.2);
+    }
+    .form-group small {
+      font-size: 12px;
+      color: var(--secondary);
+      margin-top: 2px;
+    }
+    /* Checkbox styling */
+    .checkbox-group {
+      display: flex;
+      flex-direction: column; /* Stack checkboxes */
+      gap: 8px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      font-size: 14px; /* Slightly larger */
+      font-weight: 500;
+    }
+    .checkbox-group input[type="checkbox"] {
+      margin-right: 8px;
+      cursor: pointer;
+       /* Optional: Larger custom checkbox */
+       accent-color: var(--primary); /* Modern browsers */
+       width: 16px;
+       height: 16px;
+    }
+    .form-actions {
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      display: flex;
+      flex-direction: column; /* Stack button and status */
+      align-items: flex-start; /* Align items to the left */
+    }
+    #save-settings-btn {
+       width: auto; /* Don't make button full width */
+       padding: 8px 20px;
+    }
+    #settings-status {
+       margin-top: 10px;
+       text-align: left; /* Align status text left */
+       width: 100%; /* Make status take full width */
+    }
+    #open-settings-page-link-alt {
+        color: var(--primary);
+        text-decoration: none;
+    }
+    #open-settings-page-link-alt:hover {
+        text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -662,257 +765,233 @@
 
     <!-- Tab Navigation -->
     <div class="tabs">
-      <div id="tab-extract" class="tab active">Extract Users</div>
-      <div id="tab-manage" class="tab">User Management</div>
-      <div id="tab-agent" class="tab">Follow Agent</div>
-      <div id="tab-metrics" class="tab">Metrics</div>
+      <div class="tab active" data-tab="agent-status">Agent Status</div>
+      <div class="tab" data-tab="user-management">User Management</div>
+      <div class="tab" data-tab="settings">Settings</div>
+      <div class="tab" data-tab="logs">Logs</div>
+      <div class="tab" data-tab="test">Test</div> <!-- Added Test tab -->
+      <!-- Potentially more tabs -->
     </div>
 
-    <!-- Tab Content Container -->
-    <div id="main-content-area">
-        <!-- Extract Users Tab -->
-        <div id="extract-users-content" class="tab-content active">
-          <div class="extraction-section">
-              <h2>Extract Users from Page</h2>
-              <p>Navigate to a profile's followers or following page, then click Extract below.</p>
-               <div class="scroll-options">
-                   <label><input type="radio" name="scroll-option" value="50" checked> Normal (~50 scrolls)</label>
-                   <label><input type="radio" name="scroll-option" value="100"> Deep (~100 scrolls)</label>
-                   <label><input type="radio" name="scroll-option" value="200"> Max (~200 scrolls)</label>
-               </div>
-              <button id="extract-usernames" class="btn">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                   Extract from Current Page
-              </button>
-          </div>
-
-          <div class="extraction-section">
-              <h2>Extract Users from List URL</h2>
-              <p>Paste the full URL of a list's <strong>members</strong> page (e.g., <code>https://x.com/i/lists/123.../members</code>).</p>
-               <div class="form-group" style="margin-bottom: 12px;">
-                   <input type="text" id="list-url-input" class="search-input" placeholder="Paste list members URL here...">
-               </div>
-              <button id="extract-from-list-url" class="btn secondary">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                   Extract from List URL
-              </button>
-          </div>
-          
-          <div class="extraction-section">
-              <h2>Extract Users from Community URL</h2>
-              <p>Paste the full URL of a community's <strong>members</strong> page (e.g., <code>https://x.com/i/communities/.../members</code>).</p>
-               <div class="form-group" style="margin-bottom: 12px;">
-                   <input type="text" id="community-url-input" class="search-input" placeholder="Paste community members URL here...">
-               </div>
-              <button id="extract-from-community-url" class="btn secondary">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                   Extract from Community URL
-              </button>
-          </div>
-        </div>
-        
-        <!-- User Management Tab -->
-        <div id="user-management-content" class="tab-content">
-           <h2>User List</h2>
-           <div class="user-filter-buttons">
-             <button class="filter-btn active" data-filter="all">All</button>
-             <button class="filter-btn" data-filter="queued">Queued</button>
-             <button class="filter-btn" data-filter="followed">Followed</button>
-             <button class="filter-btn" data-filter="unfollowed">Unfollowed</button>
+    <div class="tab-content active" id="agent-status-content">
+       <!-- <<< Add Agent Status HTML Structure >>> -->
+       <div class="agent-status">
+         <div id="agent-status-indicator" class="status-indicator offline">
+           <span class="status-dot"></span>
+           <span class="status-text">Agent Offline</span>
+         </div>
+         
+         <div class="agent-stats">
+           <div class="stat-item">
+             <span class="stat-label">Today's Follows</span>
+             <div id="daily-follow-count" class="stat-value">0</div>
            </div>
-           
-           <div class="search-container">
-             <input type="text" id="search-input" class="search-input" placeholder="Search usernames or display names...">
+           <div class="stat-item">
+             <span class="stat-label">Today's Unfollows</span>
+             <div id="daily-unfollow-count" class="stat-value">0</div>
            </div>
-
-           <div id="user-list">
-             <!-- User items will be dynamically inserted here -->
-             <div class="empty-state">Loading users...</div>
+           <div class="stat-item">
+             <span class="stat-label">Currently Following</span>
+             <div id="total-follow-count" class="stat-value">0</div>
            </div>
-           
-           <div class="list-footer">
-                <span id="user-count" class="user-count">0 users</span>
-                <div class="btn-group">
-                      <button id="refresh-list" class="btn secondary" title="Refresh List">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                      </button>
-                      <button id="clear-queue" class="btn secondary" title="Clear Queued Users">Clear Queued</button>
-                      <button id="export-users" class="btn secondary" title="Export All to CSV">Export CSV</button>
-                </div>
+           <div class="stat-item">
+             <span class="stat-label">Daily Limit</span>
+             <div id="follow-limit" class="stat-value">0</div>
            </div>
-        </div>
-
-        <!-- Follow Agent Tab -->
-        <div id="agent-content" class="tab-content">
-          <div class="agent-status">
-            <div id="agent-status-indicator" class="status-indicator offline">
-              <span class="status-dot"></span>
-              <span class="status-text">Agent Offline</span>
-            </div>
-            
-            <div class="agent-stats">
-              <div class="stat-item">
-                <span class="stat-label">Today's Follows</span>
-                <div id="daily-follow-count" class="stat-value">0</div>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Today's Unfollows</span>
-                <div id="daily-unfollow-count" class="stat-value">0</div>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Currently Following</span>
-                <div id="total-follow-count" class="stat-value">0</div>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Daily Limit</span>
-                <div id="follow-limit" class="stat-value">0</div>
-              </div>
-            </div>
-            
-            <div class="current-action">
-              <span class="action-label">Current Action:</span>
-              <div id="current-action" class="action-value">Idle</div>
-            </div>
-          </div>
-          
-          <div class="btn-group">
-            <button id="start-agent" class="btn">
-               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-               Start Agent
-            </button>
-            <button id="stop-agent" class="btn secondary" disabled>
-               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-               Stop Agent
-            </button>
-          </div>
-          
-          <div class="agent-settings-link">
-            <a href="settings.html" id="open-settings">Configure Agent Settings</a>
-          </div>
-           
-          <div id="debug-instructions" class="info-box hidden" style="margin-top: 16px;">
-               <h4 style="margin-top: 0; margin-bottom: 8px;">Debugging Tools</h4>
-               <p style="margin-bottom: 8px;">Use the Debug UI on the Twitter page (bottom-left) or console commands:</p>
-               <ul style="margin-left: 20px; padding-left: 0; list-style-type: disc; margin-bottom: 0;">
-                   <li><code>window.initDebugUI()</code></li>
-                   <li><code>window.testFindFollowButton()</code></li>
-                   <li><code>window.testSelector("...")</code></li>
-               </ul>
-           </div>
-        </div>
-        
-        <!-- Metrics Tab -->
-        <div id="metrics-content" class="tab-content">
-          <h2>Performance Metrics</h2>
-          
-          <div class="metrics-section">
-             <h3>Last 24 Hours</h3>
-             <div class="metrics-grid">
-                <div class="metric-item">
-                   <span class="metric-label">Follows</span>
-                   <div id="metric-follows-24h" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Unfollows</span>
-                   <div id="metric-unfollows-24h" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Follow-backs</span>
-                   <div id="metric-followbacks-24h" class="metric-value metric-placeholder">N/A</div>
-                </div>
-                 <div class="metric-item">
-                   <span class="metric-label">Net Gain</span>
-                   <div id="metric-net-24h" class="metric-value">0</div>
-                </div>
-             </div>
-          </div>
-          
-           <div class="metrics-section">
-             <h3>Last 7 Days</h3>
-              <div class="metrics-grid">
-                <div class="metric-item">
-                   <span class="metric-label">Follows</span>
-                   <div id="metric-follows-7d" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Unfollows</span>
-                   <div id="metric-unfollows-7d" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Follow-backs</span>
-                   <div id="metric-followbacks-7d" class="metric-value metric-placeholder">N/A</div>
-                </div>
-                 <div class="metric-item">
-                   <span class="metric-label">Net Gain</span>
-                   <div id="metric-net-7d" class="metric-value">0</div>
-                </div>
-             </div>
-          </div>
-          
-           <div class="metrics-section">
-             <h3>Last 30 Days</h3>
-              <div class="metrics-grid">
-                <div class="metric-item">
-                   <span class="metric-label">Follows</span>
-                   <div id="metric-follows-30d" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Unfollows</span>
-                   <div id="metric-unfollows-30d" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Follow-backs</span>
-                   <div id="metric-followbacks-30d" class="metric-value metric-placeholder">N/A</div>
-                </div>
-                 <div class="metric-item">
-                   <span class="metric-label">Net Gain</span>
-                   <div id="metric-net-30d" class="metric-value">0</div>
-                </div>
-             </div>
-          </div>
-          
-           <div class="metrics-section">
-             <h3>All Time</h3>
-              <div class="metrics-grid">
-                <div class="metric-item">
-                   <span class="metric-label">Total Follows</span>
-                   <div id="metric-follows-all" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Total Unfollows</span>
-                   <div id="metric-unfollows-all" class="metric-value">0</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Follow-back Rate</span>
-                   <div id="metric-followback-rate-all" class="metric-value metric-placeholder">N/A</div>
-                </div>
-                <div class="metric-item">
-                   <span class="metric-label">Avg. Time to Unfollow</span>
-                   <div id="metric-avg-unfollow-time" class="metric-value metric-placeholder">N/A</div>
-                </div>
-             </div>
-          </div>
-          
-        </div>
-    </div>
-    
-    <!-- Settings Content (Initially Hidden) -->
-    <div id="settings-content" class="tab-content" style="display: none;">
-       <div style="display: flex; align-items: center; margin-bottom: 16px;">
-           <button id="back-to-tabs-btn" class="icon-btn" title="Back to tabs" style="margin-right: 8px;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-           </button>
-           <h2 style="margin: 0; font-size: 16px;">Settings</h2>
+         </div>
+         
+         <div class="current-action">
+           <span class="action-label">Current Action:</span>
+           <div id="current-action" class="action-value">Idle</div>
+         </div>
        </div>
        
-       <!-- Settings form will be merged here later -->
-       <p>Settings form placeholder...</p>
-       <p>Actual settings fields will appear here.</p>
-
+       <div class="btn-group">
+         <button id="start-agent" class="btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            Start Agent
+         </button>
+         <button id="stop-agent" class="btn secondary" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+            Stop Agent
+         </button>
+       </div>
+       
+       <!-- Optional: Instructions (if needed) -->
+       <div id="debug-instructions" class="info-box hidden" style="margin-top: 16px;">
+            <h4>Debugging Info</h4>
+            <p>Activate debug mode using the 🐞 button in the header to see detailed logs and test UI elements on the Twitter page.</p>
+       </div>
+        <!-- <<< End Agent Status HTML Structure >>> -->
     </div>
 
-  </div>
-  
+    <div class="tab-content" id="user-management-content">
+       <!-- <<< Add User Management HTML Structure >>> -->
+       <h2>User Management</h2>
+        <div class="user-filter-buttons">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="queued">Queued</button>
+          <button class="filter-btn" data-filter="followed">Followed</button>
+          <button class="filter-btn" data-filter="unfollowed">Unfollowed</button>
+        </div>
+        
+        <div class="search-container">
+          <input type="text" id="search-input" class="search-input" placeholder="Search usernames or display names...">
+        </div>
+
+        <div id="user-list">
+          <!-- User items will be dynamically inserted here -->
+          <div class="empty-state">Loading users...</div>
+        </div>
+        
+        <div class="list-footer">
+             <span id="user-count" class="user-count">0 users</span>
+             <div class="btn-group">
+                   <button id="refresh-list" class="icon-btn secondary" title="Refresh List">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                   </button>
+                   <button id="clear-queue" class="btn secondary" title="Clear Queued Users">Clear Queued</button>
+                   <button id="export-users" class="btn secondary" title="Export All to CSV">Export CSV</button>
+             </div>
+        </div>
+       <!-- <<< End User Management HTML Structure >>> -->
+    </div>
+
+    <div class="tab-content" id="settings-content">
+       <!-- <<< Settings Form Structure >>> -->
+       <h2>Agent Settings</h2>
+       <form id="settings-form">
+         
+         <div class="settings-section">
+           <h3>Core Actions</h3>
+           <div class="form-group checkbox-group">
+              <label for="enableAutoFollow">
+                <input type="checkbox" id="enableAutoFollow"> Enable Auto-Follow
+              </label>
+              <label for="enableAutoUnfollow">
+                <input type="checkbox" id="enableAutoUnfollow"> Enable Auto-Unfollow
+              </label>
+           </div>
+         </div>
+
+         <div class="settings-section">
+            <h3>Rate Limits</h3>
+            <div class="form-grid">
+               <div class="form-group">
+                 <label for="dailyFollowLimit">Daily Follow Limit:</label>
+                 <input type="number" id="dailyFollowLimit" min="0" step="1">
+                 <small>Max follows per 24 hours.</small>
+               </div>
+               <div class="form-group">
+                 <label for="hourlyFollowLimit">Hourly Follow Limit:</label>
+                 <input type="number" id="hourlyFollowLimit" min="0" step="1">
+                 <small>Max follows per hour (0=disabled).</small>
+               </div>
+               <div class="form-group">
+                 <label for="maxActionsSession">Max Actions Per Session:</label>
+                 <input type="number" id="maxActionsSession" min="0" step="1">
+                 <small>Agent stops after N follows/unfollows (0=disabled).</small>
+               </div>
+            </div>
+         </div>
+
+         <div class="settings-section">
+           <h3>Timing & Intervals</h3>
+           <div class="form-grid">
+              <div class="form-group">
+                <label for="followInterval">Follow Interval (seconds):</label>
+                <input type="number" id="followInterval" min="1" step="1">
+                <small>Base time between actions.</small>
+              </div>
+              <div class="form-group">
+                 <label for="timeVariance">Interval Variance (%):</label>
+                 <input type="number" id="timeVariance" min="0" max="100" step="1">
+                 <small>Randomize interval by +/- this percent.</small>
+              </div>
+              <div class="form-group">
+                <label for="unfollowDays">Unfollow After (days):</label>
+                <input type="number" id="unfollowDays" min="0" step="1">
+                <small>Unfollow if no follow-back after X days (0=disabled).</small>
+              </div>
+              <div class="form-group">
+                 <label for="unfollowSeconds">Unfollow After (seconds):</label>
+                 <input type="number" id="unfollowSeconds" min="0" step="1">
+                 <small>Overrides days (min 5s).</small>
+              </div>
+              <div class="form-group">
+                <label for="minThinkingTime">Min Thinking Time (ms):</label>
+                <input type="number" id="minThinkingTime" min="0" step="50">
+                <small>Min delay before clicks.</small>
+              </div>
+              <div class="form-group">
+                <label for="maxThinkingTime">Max Thinking Time (ms):</label>
+                <input type="number" id="maxThinkingTime" min="0" step="50">
+                <small>Max delay before clicks.</small>
+              </div>
+           </div>
+         </div>
+         
+         <div class="form-actions" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px;">
+            <button type="submit" id="save-settings-btn" class="btn">Save Settings</button>
+            <div id="settings-status" class="status hidden" style="margin-top: 10px; text-align: left;"></div>
+         </div>
+
+       </form>
+       
+       <!-- Link to separate settings page (optional) -->
+       <p style="margin-top: 20px; font-size: 13px; text-align: center;">
+         <a href="#" id="open-settings-page-link-alt">Advanced Settings</a>
+       </p>
+       <!-- <<< End Settings Form Structure >>> -->
+    </div>
+
+    <div class="tab-content" id="logs-content">
+       <!-- <<< Add Logs HTML Structure (Placeholder for now) >>> -->
+       <h2>Logs</h2>
+       <p>Detailed logs might be better viewed in the browser console (Right-click extension icon -> Inspect Popup), or a dedicated logs page.</p>
+       <pre id="popup-log-display" style="background-color: var(--light-bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">Basic logs might appear here...</pre>
+        <!-- <<< End Logs HTML Structure >>> -->
+    </div>
+
+    <!-- New Test Tab Content -->
+    <div class="tab-content" id="test-content">
+      <h2>Test Follow/Unfollow Flow</h2>
+
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="test-username" style="display: block; margin-bottom: 4px; font-weight: 500;">Twitter Username:</label>
+        <input type="text" id="test-username" placeholder="@username" style="width: calc(100% - 16px); padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+        <small style="color: var(--secondary); font-size: 12px;">Enter the full username including '@'.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+        <label for="test-delay" style="font-weight: 500;">Wait Delay:</label>
+        <input type="number" id="test-delay" value="5" min="1" style="width: 60px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; text-align: right;">
+        <select id="test-delay-unit" style="padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+          <option value="seconds" selected>Seconds</option>
+          <option value="minutes">Minutes</option>
+        </select>
+      </div>
+
+      <button id="run-test-btn" class="btn" style="width: 100%; margin-bottom: 16px;">Run Test</button>
+
+      <div class="test-output-section" style="margin-top: 16px;">
+        <h3 style="font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">Real-time Status</h3>
+        <pre id="test-status-log" style="background-color: var(--light-bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px; font-size: 12px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">Test status will appear here...</pre>
+      </div>
+
+      <div class="test-output-section" style="margin-top: 16px;">
+        <h3 style="font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;">Test Results Log</h3>
+         <pre id="test-results-log" style="background-color: var(--light-bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px; font-size: 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">Detailed test results will appear here...</pre>
+      </div>
+
+       <div id="test-error-message" class="status error hidden" style="margin-top: 12px;"></div>
+    </div>
+    <!-- End New Test Tab Content -->
+
+  </div> <!-- End container -->
+
+  <!-- Link to your popup script -->
   <script src="popup.js"></script>
+  <!-- Potentially other scripts like settings.js -->
 </body>
 </html> 
