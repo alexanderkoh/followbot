@@ -767,10 +767,10 @@
     <div class="tabs">
       <div class="tab active" data-tab="agent-status">Agent Status</div>
       <div class="tab" data-tab="user-management">User Management</div>
+      <div class="tab" data-tab="extraction">Extraction</div>
       <div class="tab" data-tab="settings">Settings</div>
       <div class="tab" data-tab="logs">Logs</div>
-      <div class="tab" data-tab="test">Test</div> <!-- Added Test tab -->
-      <!-- Potentially more tabs -->
+      <div class="tab" data-tab="test">Test</div>
     </div>
 
     <div class="tab-content active" id="agent-status-content">
@@ -855,6 +855,40 @@
              </div>
         </div>
        <!-- <<< End User Management HTML Structure >>> -->
+    </div>
+
+    <div class="tab-content" id="extraction-content">
+      <h2>User Extraction</h2>
+      
+      <div class="extraction-section">
+        <h3>Extract from Followers/Following Page</h3>
+        <p>Navigate to someone's followers or following page on Twitter/X, then choose how many scrolls to perform and click Extract.</p>
+        <div class="scroll-options">
+          <label><input type="radio" name="scroll-option" value="10" checked> 10 Scrolls (~100-200 users)</label>
+          <label><input type="radio" name="scroll-option" value="50"> 50 Scrolls (~500-1k users)</label>
+          <label><input type="radio" name="scroll-option" value="200"> 200 Scrolls (~2k-4k users)</label>
+        </div>
+        <button id="extract-usernames" class="btn">Extract from Current Page</button>
+      </div>
+
+      <div class="extraction-section">
+        <h3>Extract from List Members Page</h3>
+        <p>Enter the URL of a Twitter/X List's <strong>members</strong> page (e.g., <code>https://x.com/i/lists/123.../members</code>).</p>
+        <div class="form-group" style="margin-bottom: 10px;">
+           <input type="text" id="list-url-input" placeholder="Enter List Members URL...">
+        </div>
+        <button id="extract-from-list-url" class="btn secondary">Navigate & Extract from List</button>
+      </div>
+
+       <div class="extraction-section">
+        <h3>Extract from Community Members Page</h3>
+        <p>Enter the URL of a Twitter/X Community's <strong>members</strong> page (e.g., <code>https://x.com/i/communities/123.../members</code>).</p>
+        <div class="form-group" style="margin-bottom: 10px;">
+           <input type="text" id="community-url-input" placeholder="Enter Community Members URL...">
+        </div>
+        <button id="extract-from-community-url" class="btn secondary">Navigate & Extract from Community</button>
+      </div>
+
     </div>
 
     <div class="tab-content" id="settings-content">
